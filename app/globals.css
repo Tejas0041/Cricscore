@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --primary: #10b981;
+  --primary-foreground: #ffffff;
+  --secondary: #3b82f6;
+  --secondary-foreground: #ffffff;
+  --accent: #f59e0b;
+  --muted: #f1f5f9;
+  --border: #e2e8f0;
+}
+
+[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #f1f5f9;
+  --card: #1a1a1a;
+  --card-foreground: #f1f5f9;
+  --primary: #10b981;
+  --primary-foreground: #ffffff;
+  --secondary: #3b82f6;
+  --secondary-foreground: #ffffff;
+  --accent: #f59e0b;
+  --muted: #262626;
+  --border: #404040;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@keyframes coinFlip {
+  0%   { transform: rotateY(0deg) scale(1); }
+  25%  { transform: rotateY(180deg) scale(1.2); }
+  50%  { transform: rotateY(360deg) scale(1); }
+  75%  { transform: rotateY(540deg) scale(1.2); }
+  100% { transform: rotateY(720deg) scale(1); }
+}
+
+.coin-flip {
+  animation: coinFlip 0.8s ease-in-out forwards;
+}
