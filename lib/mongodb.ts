@@ -1,5 +1,11 @@
 import mongoose from 'mongoose';
 
+// Ensure all models are registered in every serverless context
+import '@/models/Player';
+import '@/models/Team';
+import '@/models/Match';
+import '@/models/User';
+
 const MONGODB_URI = process.env.MONGODB_URI!;
 
 if (!MONGODB_URI) {
