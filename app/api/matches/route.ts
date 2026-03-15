@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Match from '@/models/Match';
+import Player from '@/models/Player'; // required for populate
 import { requireAuth } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {

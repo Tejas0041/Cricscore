@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Team from '@/models/Team';
+import Player from '@/models/Player'; // required for populate
 
 export async function GET() {
   try {
