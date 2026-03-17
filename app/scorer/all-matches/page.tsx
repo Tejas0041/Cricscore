@@ -18,6 +18,7 @@ export default function AllMatchesPage() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [pickedDate, setPickedDate] = useState<Date | null>(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const [deleting, setDeleting] = useState(false);
   const pusherRef = useRef<any>(null);
   const channelsRef = useRef<any[]>([]);
 
@@ -65,8 +66,10 @@ export default function AllMatchesPage() {
       title: 'Delete Match',
       message: 'Delete this match? This cannot be undone and will revert all player stats.',
       onConfirm: async () => {
+        setDeleting(true);
         const res = await fetch(`/api/matches/${matchId}`, { method: 'DELETE' });
         if (res.ok) setMatches(m => m.filter(x => x._id !== matchId));
+        setDeleting(false);
         setConfirmDialog(d => ({ ...d, isOpen: false }));
       },
     });
@@ -120,6 +123,7 @@ export default function AllMatchesPage() {
         onConfirm={confirmDialog.onConfirm}
         onCancel={() => setConfirmDialog(d => ({ ...d, isOpen: false }))}
         danger={true}
+        loading={deleting}
       />
 
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white">

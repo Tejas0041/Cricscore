@@ -12,6 +12,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   danger?: boolean;
+  loading?: boolean;
 }
 
 export default function ConfirmDialog({
@@ -23,6 +24,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   danger = false,
+  loading = false,
 }: ConfirmDialogProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -44,19 +46,22 @@ export default function ConfirmDialog({
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-3 bg-[var(--muted)] hover:bg-[var(--border)] rounded-xl font-semibold transition-all"
+            disabled={loading}
+            className="flex-1 px-4 py-3 bg-[var(--muted)] hover:bg-[var(--border)] rounded-xl font-semibold transition-all disabled:opacity-50"
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
-            className={`flex-1 px-4 py-3 rounded-xl font-semibold transition-all ${
+            disabled={loading}
+            className={`flex-1 px-4 py-3 rounded-xl font-semibold transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
               danger
                 ? 'bg-red-500 hover:bg-red-600 text-white'
                 : 'bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white hover:opacity-90'
             }`}
           >
-            {confirmText}
+            {loading && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+            {loading ? 'Deleting...' : confirmText}
           </button>
         </div>
       </div>

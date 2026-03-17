@@ -158,7 +158,7 @@ export default function MatchPage() {
         if (!batStats[bpid]) batStats[bpid] = { runs: 0, balls: 0, fours: 0, singles: 0, out: false };
         if (e.eventType === 'run') { batStats[bpid].runs += e.runs; batStats[bpid].balls++; if (e.runs === 4) batStats[bpid].fours++; else if (e.runs === 1) batStats[bpid].singles++; }
         else if (e.eventType === 'dot') batStats[bpid].balls++;
-        else if (e.eventType === 'wicket') { batStats[bpid].balls++; batStats[bpid].out = true; }
+        else if (e.eventType === 'wicket') { batStats[bpid].balls++; batStats[bpid].out = true; batStats[bpid].dismissedBy = wpid || null; }
       }
       if (wpid) {
         if (!bowlStats[wpid]) bowlStats[wpid] = { runs: 0, wickets: 0, balls: 0, dots: 0 };
@@ -183,6 +183,14 @@ export default function MatchPage() {
   const winMessage = (() => {
     if (match.status !== 'completed' || !match.winner) return null;
     if (match.winner === 'Tie') return 'Match Tied!';
+
+    // Super over win
+    if (match.superOver?.completed) {
+      const soWinner = match.superOver.winner;
+      if (soWinner && soWinner !== 'Tie') return `Match tied · ${soWinner} won the Super Over`;
+      return 'Match tied · Super Over tied!';
+    }
+
     if (match.winner === match.teamB.name) {
       const w = match.teamB.players.length - secondInnings.wickets;
       return `${match.winner} won by ${w} wicket${w !== 1 ? 's' : ''}`;
@@ -206,6 +214,11 @@ export default function MatchPage() {
   const squadPlayers = currentTeam?.players || [];
   const availableToAdd = allPlayers.filter((p: any) => !squadPlayers.some((sp: any) => sp._id?.toString() === p._id?.toString()));
 
+  const allPlayerNameMap: Record<string, string> = {};
+  [...match.teamA.players, ...match.teamB.players].forEach((p: any) => {
+    if (p?._id) allPlayerNameMap[p._id.toString()] = p.nickname ? `${p.name} (${p.nickname})` : p.name;
+  });
+
   const BattingTable = ({ players, stats, captain }: any) => (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -222,9 +235,13 @@ export default function MatchPage() {
             const pid = player._id.toString();
             const s = stats[pid];
             const isCap = captain && (captain._id?.toString() === pid || captain.toString() === pid);
+            const bowlerName = s.dismissedBy ? allPlayerNameMap[s.dismissedBy] : null;
             return (
               <tr key={pid} className="border-b border-[var(--border)]">
-                <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCap ? ' (c)' : ''}{s.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
+                <td className="py-2">
+                  {player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCap ? ' (c)' : ''}
+                  {s.out && <span className="text-red-500 ml-1 text-xs">out{bowlerName ? ` b. ${bowlerName}` : ''}</span>}
+                </td>
                 <td className="text-center">{s.runs}</td><td className="text-center">{s.balls}</td>
                 <td className="text-center">{s.singles}</td><td className="text-center">{s.fours}</td>
                 <td className="text-center">{s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(1) : '-'}</td>

@@ -38,6 +38,16 @@ export default function ScorePage() {
   const [creatingMatch, setCreatingMatch] = useState(false);
   const [motm, setMotm] = useState<any>(null);
   const [motmLoading, setMotmLoading] = useState(false);
+  const [superOverModal, setSuperOverModal] = useState(false);
+  const [superOverBattingFirst, setSuperOverBattingFirst] = useState<'A' | 'B'>('A');
+  const [superOverOvers, setSuperOverOvers] = useState('1');
+  const [startingSuperOver, setStartingSuperOver] = useState(false);
+  const [soCurrentBatsman, setSoCurrentBatsman] = useState('');
+  const [soCurrentBowler, setSoCurrentBowler] = useState('');
+  const [soTempBatsman, setSoTempBatsman] = useState('');
+  const [soTempBowler, setSoTempBowler] = useState('');
+  const [soEditingPlayers, setSoEditingPlayers] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
   const matchRef = useRef<any>(null);
   const isScoringRef = useRef(false);
 
@@ -46,6 +56,9 @@ export default function ScorePage() {
 
   useEffect(() => {
     fetchMatch();
+    fetch('/api/admin/settings').then(r => r.json()).then(d => {
+      if (d.settings) setSettings(d.settings);
+    });
   }, []);
 
   useEffect(() => {
@@ -132,8 +145,10 @@ export default function ScorePage() {
   };
 
   // Poll for MOTM after match completes (auto-fire may take a few seconds)
+  // Don't poll for plain ties — user must choose super over or manually trigger
   useEffect(() => {
-    if (!match || match.status !== 'completed' || motm) return;
+    const isTie = match?.winner === 'Tie' && !match?.superOver?.active && !match?.superOver?.completed;
+    if (!match || match.status !== 'completed' || motm || isTie) return;
     const interval = setInterval(async () => {
       const res = await fetch(`/api/matches/${params.id}`);
       if (!res.ok) return;
@@ -143,10 +158,9 @@ export default function ScorePage() {
         clearInterval(interval);
       }
     }, 2000);
-    // Stop polling after 30s
     const timeout = setTimeout(() => clearInterval(interval), 30000);
     return () => { clearInterval(interval); clearTimeout(timeout); };
-  }, [match?.status, motm]);
+  }, [match?.status, match?.winner, match?.superOver?.completed, motm]);
 
   const handleSavePlayers = async (batsmanId?: string, bowlerId?: string) => {
     const bat = batsmanId ?? tempBatsman;
@@ -352,7 +366,11 @@ export default function ScorePage() {
     if (!match) return;
     setCreatingMatch(true);
     try {
-      // Swap teamA/teamB so the batting-first team is always teamA
+      // If previous match was a tie with no super over, fire MOTM for it in background
+      if (match.winner === 'Tie' && !match.superOver?.completed) {
+        fetch(`/api/matches/${params.id}/motm`, { method: 'POST' }).catch(() => {});
+      }
+
       const batFirst = newMatchBattingFirst === 'A' ? match.teamA : match.teamB;
       const batSecond = newMatchBattingFirst === 'A' ? match.teamB : match.teamA;
       const body = {
@@ -386,6 +404,73 @@ export default function ScorePage() {
       setAlertDialog({ isOpen: true, title: 'Error', message: 'Failed to create new match' });
     } finally {
       setCreatingMatch(false);
+    }
+  };
+
+  const handleStartSuperOver = async () => {
+    if (startingSuperOver) return;
+    setStartingSuperOver(true);
+    try {
+      const batFirst = superOverBattingFirst === 'A' ? match.teamA : match.teamB;
+      const batSecond = superOverBattingFirst === 'A' ? match.teamB : match.teamA;
+      const soData = {
+        active: true,
+        completed: false,
+        winner: '',
+        overs: parseInt(superOverOvers) || 1,
+        currentInnings: 'first',
+        innings: {
+          first: { battingTeam: batFirst.name, bowlingTeam: batSecond.name, runs: 0, wickets: 0, overs: 0, balls: 0, completed: false },
+          second: { battingTeam: batSecond.name, bowlingTeam: batFirst.name, runs: 0, wickets: 0, overs: 0, balls: 0, completed: false },
+        },
+      };
+      const res = await fetch(`/api/matches/${params.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ superOver: soData }),
+      });
+      if (!res.ok) throw new Error('Failed to start super over');
+      const data = await res.json();
+      setMatch(data.match);
+      setSuperOverModal(false);
+      setSoCurrentBatsman(''); setSoCurrentBowler('');
+    } catch (e) {
+      setAlertDialog({ isOpen: true, title: 'Error', message: 'Failed to start super over' });
+    } finally {
+      setStartingSuperOver(false);
+    }
+  };
+
+  const handleSuperOverScore = async (eventType: string, runs: number = 0) => {
+    if (!soCurrentBatsman || !soCurrentBowler) {
+      setAlertDialog({ isOpen: true, title: 'Selection Required', message: 'Please select batsman and bowler' });
+      return;
+    }
+    if (isScoringRef.current) return;
+    isScoringRef.current = true;
+    setIsScoring(true);
+    try {
+      const res = await fetch(`/api/matches/${params.id}/score`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventType, runs, batsman: soCurrentBatsman, bowler: soCurrentBowler, superOver: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+      setMatch(data.match);
+      const so = data.match.superOver;
+      if (so?.completed) {
+        setSoCurrentBatsman(''); setSoCurrentBowler('');
+      } else {
+        const inn = so?.innings?.[so?.currentInnings];
+        const cb = inn?.currentBatsman;
+        const cbw = inn?.currentBowler;
+        if (cb) setSoCurrentBatsman(cb._id ? cb._id.toString() : cb.toString());
+        else setSoCurrentBatsman('');
+        if (cbw) setSoCurrentBowler(cbw._id ? cbw._id.toString() : cbw.toString());
+        else setSoCurrentBowler('');
+      }
+    } finally {
+      isScoringRef.current = false;
+      setIsScoring(false);
     }
   };
 
@@ -570,12 +655,17 @@ export default function ScorePage() {
     return true;
   });
 
+  const allPlayerNameMap: Record<string, string> = {};
+  [...match.teamA.players, ...match.teamB.players].forEach((p: any) => {
+    if (p?._id) allPlayerNameMap[p._id.toString()] = p.nickname ? `${p.name} (${p.nickname})` : p.name;
+  });
+
   const batsmanStats = match.timeline
     .filter((e: any) => e.innings === match.currentInnings && e.batsman)
     .reduce((acc: any, e: any) => {
       const pid = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
       if (!pid) return acc;
-      if (!acc[pid]) acc[pid] = { runs: 0, balls: 0, fours: 0, singles: 0, out: false };
+      if (!acc[pid]) acc[pid] = { runs: 0, balls: 0, fours: 0, singles: 0, out: false, dismissedBy: null };
       if (e.eventType === 'run') {
         acc[pid].runs += e.runs;
         acc[pid].balls++;
@@ -586,6 +676,8 @@ export default function ScorePage() {
       } else if (e.eventType === 'wicket') {
         acc[pid].balls++;
         acc[pid].out = true;
+        const wid = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+        acc[pid].dismissedBy = wid || null;
       }
       return acc;
     }, {});
@@ -621,6 +713,14 @@ export default function ScorePage() {
   const winMessage = (() => {
     if (match.status !== 'completed' || !match.winner) return null;
     if (match.winner === 'Tie') return 'Match Tied!';
+
+    // Super over win
+    if (match.superOver?.completed) {
+      const soWinner = match.superOver.winner;
+      if (soWinner && soWinner !== 'Tie') return `Match tied · ${soWinner} won the Super Over`;
+      return 'Match tied · Super Over tied!';
+    }
+
     const teamBName = match.teamB.name;
     // Team batting second won — by wickets remaining
     if (match.winner === teamBName) {
@@ -645,13 +745,17 @@ export default function ScorePage() {
     .reduce((acc: any, e: any) => {
       const pid = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
       if (!pid) return acc;
-      if (!acc[pid]) acc[pid] = { runs: 0, balls: 0, fours: 0, singles: 0, out: false };
+      if (!acc[pid]) acc[pid] = { runs: 0, balls: 0, fours: 0, singles: 0, out: false, dismissedBy: null };
       if (e.eventType === 'run') {
         acc[pid].runs += e.runs; acc[pid].balls++;
         if (e.runs === 4) acc[pid].fours++;
         else if (e.runs === 1) acc[pid].singles++;
       } else if (e.eventType === 'dot') { acc[pid].balls++; }
-      else if (e.eventType === 'wicket') { acc[pid].balls++; acc[pid].out = true; }
+      else if (e.eventType === 'wicket') {
+        acc[pid].balls++; acc[pid].out = true;
+        const wid = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+        acc[pid].dismissedBy = wid || null;
+      }
       return acc;
     }, {});
 
@@ -677,6 +781,42 @@ export default function ScorePage() {
         onConfirm={() => setAlertDialog({ ...alertDialog, isOpen: false })}
         onCancel={() => setAlertDialog({ ...alertDialog, isOpen: false })}
       />
+
+      {/* Super Over Setup Modal */}
+      {superOverModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+              <h2 className="font-bold text-lg">⚡ Super Over</h2>
+              <button onClick={() => setSuperOverModal(false)} className="p-1.5 rounded-lg hover:bg-[var(--muted)] transition-all">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Overs</label>
+                <input type="number" min="1" max="5" value={superOverOvers} onChange={e => setSuperOverOvers(e.target.value)}
+                  className="w-full p-2.5 bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Who bats first in Super Over?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['A', 'B'] as const).map(t => (
+                    <button key={t} onClick={() => setSuperOverBattingFirst(t)}
+                      className={`p-3 rounded-lg font-semibold text-sm border-2 transition-all ${superOverBattingFirst === t ? 'border-purple-500 bg-purple-500/10 text-purple-500' : 'border-[var(--border)] bg-[var(--muted)]'}`}>
+                      {t === 'A' ? match.teamA.name : match.teamB.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button onClick={handleStartSuperOver} disabled={startingSuperOver}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all disabled:opacity-50">
+                {startingSuperOver ? 'Starting...' : 'Start Super Over'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Match Modal */}
       {newMatchModal && (
@@ -1126,86 +1266,247 @@ export default function ScorePage() {
         {/* Match Won Banner + Scoring Buttons */}
         {match.status === 'completed' ? (
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4 space-y-3">
+            {/* Result message */}
             <p className="text-xl font-bold text-center">
-              {match.winner === 'Tie' ? 'Match Tied!' : winMessage}
+              {winMessage ?? (match.winner === 'Tie' ? 'Match Tied!' : `🏆 ${match.winner}`)}
             </p>
             <p className="opacity-60 text-sm text-center">Match has ended</p>
 
-            {/* MOTM */}
-            {motm ? (() => {
-              const motmId = motm.playerId?.toString();
-              let batRuns = 0, batBalls = 0, batFours = 0, batOut = false;
-              let bowlRuns = 0, bowlBalls = 0, bowlWickets = 0;
-              if (motmId) {
-                for (const e of match.timeline) {
-                  const bId = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
-                  const wId = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
-                  if (bId === motmId) {
-                    if (e.eventType === 'run') { batRuns += e.runs; batBalls++; if (e.runs === 4) batFours++; }
-                    else if (e.eventType === 'dot') batBalls++;
-                    else if (e.eventType === 'wicket') { batBalls++; batOut = true; }
-                  }
-                  if (wId === motmId) {
-                    if (e.eventType === 'run') { bowlRuns += e.runs; bowlBalls++; }
-                    else if (e.eventType === 'dot') bowlBalls++;
-                    else if (e.eventType === 'wicket') { bowlWickets++; bowlBalls++; }
-                  }
+            {/* Super Over scorecard */}
+            {match.superOver?.completed && (() => {
+              const so = match.superOver;
+              const soFirst = so.innings.first;
+              const soSecond = so.innings.second;
+              const soEvents = match.timeline.filter((e: any) => e.innings === 'so_first' || e.innings === 'so_second');
+              const soBatStats: any = {};
+              const soBowlStats: any = {};
+              for (const e of soEvents) {
+                const bId = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
+                const wId = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+                if (bId) {
+                  if (!soBatStats[bId]) soBatStats[bId] = { runs: 0, balls: 0, fours: 0 };
+                  if (e.eventType === 'run') { soBatStats[bId].runs += e.runs; soBatStats[bId].balls++; if (e.runs === 4) soBatStats[bId].fours++; }
+                  else if (['dot','wicket'].includes(e.eventType)) soBatStats[bId].balls++;
+                }
+                if (wId) {
+                  if (!soBowlStats[wId]) soBowlStats[wId] = { runs: 0, balls: 0, wickets: 0 };
+                  if (e.eventType === 'run') { soBowlStats[wId].runs += e.runs; soBowlStats[wId].balls++; }
+                  else if (e.eventType === 'dot') soBowlStats[wId].balls++;
+                  else if (e.eventType === 'wicket') { soBowlStats[wId].wickets++; soBowlStats[wId].balls++; }
                 }
               }
-              const batSR = batBalls > 0 ? ((batRuns / batBalls) * 100).toFixed(0) : '0';
-              const bowlOv = `${Math.floor(bowlBalls / 6)}.${bowlBalls % 6}`;
-              const bowlEcon = bowlBalls > 0 ? (bowlRuns / (bowlBalls / 6)).toFixed(1) : '-';
+              const allSoPlayers = [...match.teamA.players, ...match.teamB.players];
+              const getName = (p: any) => p?.name || '?';
+              const findPlayer = (id: string) => allSoPlayers.find((p: any) => p._id?.toString() === id);
               return (
-                <div className="p-3 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/40 rounded-xl">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-600">Man of the Match</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] opacity-70 capitalize">{motm.provider}</span>
-                      <button onClick={findMotm} disabled={motmLoading}
-                        className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] hover:bg-[var(--border)] transition-colors disabled:opacity-50">
-                        {motmLoading ? '...' : 'Re-find'}
-                      </button>
-                    </div>
+                <div className="border border-[var(--border)] rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-purple-500/10 border-b border-[var(--border)]">
+                    <p className="text-xs font-bold text-purple-500 uppercase tracking-wide">Super Over</p>
                   </div>
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
-                    <p className="font-bold">🏅 {motm.playerName}</p>
-                    <p className="text-xs opacity-50">{motm.team}</p>
+                  <div className="p-3 space-y-3">
+                    {[{ inn: soFirst, key: 'so_first' }, { inn: soSecond, key: 'so_second' }].map(({ inn, key }) => {
+                      const batters = allSoPlayers.filter((p: any) => soBatStats[p._id?.toString()]);
+                      const bowlers = allSoPlayers.filter((p: any) => soBowlStats[p._id?.toString()]);
+                      return (
+                        <div key={key}>
+                          <p className="text-xs font-semibold opacity-60 mb-1">{inn.battingTeam} — {inn.runs}/{inn.wickets} ({inn.overs}.{inn.balls}ov)</p>
+                          {batters.filter((p: any) => {
+                            const pid = p._id?.toString();
+                            const s = soBatStats[pid];
+                            const inThisInnings = soEvents.some((e: any) => e.innings === key && (e.batsman?._id?.toString() === pid || e.batsman?.toString() === pid));
+                            return s && inThisInnings;
+                          }).map((p: any) => {
+                            const pid = p._id?.toString();
+                            const s = soBatStats[pid];
+                            return <p key={pid} className="text-xs">{getName(p)}: {s.runs}({s.balls}b){s.fours > 0 ? ` · ${s.fours}(4s)` : ''}</p>;
+                          })}
+                          {bowlers.filter((p: any) => {
+                            const pid = p._id?.toString();
+                            const inThisInnings = soEvents.some((e: any) => e.innings === key && (e.bowler?._id?.toString() === pid || e.bowler?.toString() === pid));
+                            return inThisInnings;
+                          }).map((p: any) => {
+                            const pid = p._id?.toString();
+                            const s = soBowlStats[pid];
+                            return <p key={pid} className="text-xs opacity-60">{getName(p)}: {s.wickets}W/{s.runs}R</p>;
+                          })}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex items-center gap-2 text-xs flex-wrap mb-1.5">
-                    {batBalls > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 font-semibold">
-                        Bat {batRuns}{batOut ? '' : '*'}({batBalls}) SR {batSR}{batFours > 0 ? ` · ${batFours}(4s)` : ''}
-                      </span>
-                    )}
-                    {bowlBalls > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-600 font-semibold">
-                        Bowl {bowlWickets}/{bowlRuns} ({bowlOv}ov) Econ {bowlEcon}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs opacity-70 leading-relaxed">{motm.reason}</p>
                 </div>
               );
-            })() : motmLoading ? (
-              <div className="flex items-center justify-center gap-2 text-sm opacity-60 py-1">
-                <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-                Finding Man of the Match...
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-2 text-xs opacity-50 py-1 animate-pulse">
-                <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-                Calculating MOTM...
+            })()}
+
+            {/* MOTM — only show if not a plain tie waiting for super over */}
+            {(() => {
+              const plainTie = match.winner === 'Tie' && !match.superOver?.completed;
+              if (plainTie) return null;
+              if (motm) {
+                const motmId = motm.playerId?.toString();
+                let batRuns = 0, batBalls = 0, batFours = 0, batOut = false;
+                let bowlRuns = 0, bowlBalls = 0, bowlWickets = 0;
+                if (motmId) {
+                  for (const e of match.timeline) {
+                    const bId = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
+                    const wId = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+                    if (bId === motmId) {
+                      if (e.eventType === 'run') { batRuns += e.runs; batBalls++; if (e.runs === 4) batFours++; }
+                      else if (e.eventType === 'dot') batBalls++;
+                      else if (e.eventType === 'wicket') { batBalls++; batOut = true; }
+                    }
+                    if (wId === motmId) {
+                      if (e.eventType === 'run') { bowlRuns += e.runs; bowlBalls++; }
+                      else if (e.eventType === 'dot') bowlBalls++;
+                      else if (e.eventType === 'wicket') { bowlWickets++; bowlBalls++; }
+                    }
+                  }
+                }
+                const batSR = batBalls > 0 ? ((batRuns / batBalls) * 100).toFixed(0) : '0';
+                const bowlOv = `${Math.floor(bowlBalls / 6)}.${bowlBalls % 6}`;
+                const bowlEcon = bowlBalls > 0 ? (bowlRuns / (bowlBalls / 6)).toFixed(1) : '-';
+                return (
+                  <div className="p-3 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/40 rounded-xl">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wide text-yellow-600">Man of the Match</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] opacity-70 capitalize">{motm.provider}</span>
+                        <button onClick={findMotm} disabled={motmLoading} className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] hover:bg-[var(--border)] transition-colors disabled:opacity-50">
+                          {motmLoading ? '...' : 'Re-find'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                      <p className="font-bold">🏅 {motm.playerName}</p>
+                      <p className="text-xs opacity-50">{motm.team}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs flex-wrap mb-1.5">
+                      {batBalls > 0 && <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 font-semibold">Bat {batRuns}{batOut ? '' : '*'}({batBalls}) SR {batSR}{batFours > 0 ? ` · ${batFours}(4s)` : ''}</span>}
+                      {bowlBalls > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-600 font-semibold">Bowl {bowlWickets}/{bowlRuns} ({bowlOv}ov) Econ {bowlEcon}</span>}
+                    </div>
+                    <p className="text-xs opacity-70 leading-relaxed">{motm.reason}</p>
+                  </div>
+                );
+              }
+              if (motmLoading) return (
+                <div className="flex items-center justify-center gap-2 text-sm opacity-60 py-1">
+                  <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                  Finding Man of the Match...
+                </div>
+              );
+              return (
+                <div className="flex items-center justify-center gap-2 text-xs opacity-50 py-1 animate-pulse">
+                  <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                  Calculating MOTM...
+                </div>
+              );
+            })()}
+
+            {/* Tie actions — super over or manual MOTM */}
+            {match.winner === 'Tie' && !match.superOver?.active && !match.superOver?.completed && (
+              <div className="space-y-2">
+                <button onClick={findMotm} disabled={motmLoading}
+                  className="w-full border border-yellow-500 text-yellow-500 p-2.5 rounded-lg font-semibold text-sm hover:bg-yellow-500/10 transition-all disabled:opacity-50">
+                  {motmLoading ? 'Finding MOTM...' : '🏅 Find Man of the Match'}
+                </button>
               </div>
             )}
 
-            <button onClick={handleUndo} disabled={!match.timeline?.length || isScoring}
-              className="w-full bg-purple-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-              Undo Last Ball
-            </button>
-            <button onClick={() => { setNewMatchBattingFirst('A'); setTossResult(null); setNewMatchOvers(match.overs.toString()); setNewMatchModal(true); }}
-              className="w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95">
-              Start New Match (Same Teams)
-            </button>
+            {/* Super over scoring panel */}
+            {match.superOver?.active && !match.superOver?.completed && (() => {
+              const so = match.superOver;
+              const soInn = so.innings[so.currentInnings];
+              const battingTeamName = soInn.battingTeam;
+              const bowlingTeamName = soInn.bowlingTeam;
+              const battingTeamPlayers = battingTeamName === match.teamA.name ? match.teamA.players : match.teamB.players;
+              const bowlingTeamPlayers = bowlingTeamName === match.teamA.name ? match.teamA.players : match.teamB.players;
+              const soOutPlayers = match.timeline
+                .filter((e: any) => e.eventType === 'wicket' && e.innings === ('so_' + so.currentInnings))
+                .map((e: any) => e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString());
+              const soAvailBatsmen = battingTeamPlayers.filter((p: any) => p?._id && !soOutPlayers.includes(p._id.toString()));
+              const soAvailBowlers = bowlingTeamPlayers.filter((p: any) => p?._id);
+              const soCurrentOverBalls = match.timeline.filter((e: any) => e.innings === ('so_' + so.currentInnings) && e.over === soInn.overs);
+              return (
+                <div className="border border-purple-500/40 rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-purple-500/10 border-b border-purple-500/30 flex items-center justify-between">
+                    <p className="text-xs font-bold text-purple-500 uppercase tracking-wide">⚡ Super Over — {battingTeamName} batting</p>
+                    <p className="text-sm font-bold">{soInn.runs}/{soInn.wickets} ({soInn.overs}.{soInn.balls})</p>
+                  </div>
+                  <div className="p-3 space-y-3">
+                    {soCurrentOverBalls.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {soCurrentOverBalls.map((ball: any, idx: number) => (
+                          <div key={idx} className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${ball.eventType === 'wicket' ? 'bg-red-500 text-white' : ball.eventType === 'run' && ball.runs >= 4 ? 'bg-green-500 text-white' : ball.eventType === 'dot' ? 'bg-[var(--muted)] border border-[var(--border)]' : ball.eventType === 'wide' ? 'bg-yellow-400 text-black' : ball.eventType === 'noball' ? 'bg-orange-500 text-white' : 'bg-[var(--secondary)] text-white'}`}>
+                            {ball.eventType === 'wicket' ? 'W' : ball.eventType === 'wide' ? 'Wd' : ball.eventType === 'noball' ? 'Nb' : ball.eventType === 'dot' ? '0' : ball.runs}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium mb-1 opacity-60">Batsman</label>
+                        <select value={soCurrentBatsman} onChange={e => setSoCurrentBatsman(e.target.value)}
+                          className="w-full p-2 text-sm bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                          <option value="">Select</option>
+                          {soAvailBatsmen.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 opacity-60">Bowler</label>
+                        <select value={soCurrentBowler} onChange={e => setSoCurrentBowler(e.target.value)}
+                          className="w-full p-2 text-sm bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                          <option value="">Select</option>
+                          {soAvailBowlers.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(() => {
+                        const sr = settings?.scoringRules ?? match.scoringRules;
+                        const eb = settings?.enabledButtons ?? {};
+                        return [
+                          { key: 'single',   label: `+${sr?.single ?? 1}`,   action: () => handleSuperOverScore('run', sr?.single ?? 1),   cls: 'bg-[var(--secondary)]' },
+                          { key: 'boundary', label: `+${sr?.boundary ?? 4}`, action: () => handleSuperOverScore('run', sr?.boundary ?? 4), cls: 'bg-[var(--primary)]' },
+                          { key: 'six',      label: `+${sr?.six ?? 6}`,      action: () => handleSuperOverScore('run', sr?.six ?? 6),      cls: 'bg-pink-500' },
+                          { key: 'wicket',   label: 'Wicket',                 action: () => handleSuperOverScore('wicket'),                 cls: 'bg-red-500' },
+                          { key: 'dot',      label: 'Dot',                    action: () => handleSuperOverScore('dot'),                    cls: 'bg-gray-400' },
+                          { key: 'wide',     label: 'Wide',                   action: () => handleSuperOverScore('wide'),                   cls: 'bg-yellow-500' },
+                          { key: 'noball',   label: 'No Ball',                action: () => handleSuperOverScore('noball'),                 cls: 'bg-orange-500' },
+                        ].filter(({ key }) => eb[key] !== false)
+                         .map(({ label, action, cls }) => (
+                          <button key={label} onClick={action} disabled={isScoring || !soCurrentBatsman || !soCurrentBowler}
+                            className={`${cls} text-white p-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition-all active:scale-95 disabled:opacity-50`}>
+                            {label}
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                    {isScoring && <span className="text-xs font-semibold text-green-500 animate-pulse">Saving...</span>}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Super Over button — shown below MOTM for ties */}
+            {match.winner === 'Tie' && !match.superOver?.active && !match.superOver?.completed && (
+              <button onClick={() => setSuperOverModal(true)}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95">
+                ⚡ Super Over
+              </button>
+            )}
+
+            {(!match.superOver?.active || match.superOver?.completed) && (
+              <button onClick={() => { setNewMatchBattingFirst('A'); setTossResult(null); setNewMatchOvers(match.overs.toString()); setNewMatchModal(true); }}
+                className="w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95">
+                Start New Match (Same Teams)
+              </button>
+            )}
+
+            <div className="pt-1">
+              <button onClick={handleUndo} disabled={!match.timeline?.length || isScoring}
+                className="w-full bg-purple-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                Undo Last Ball
+              </button>
+            </div>
           </div>
         ) : (
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4 md:p-6">
@@ -1214,25 +1515,49 @@ export default function ScorePage() {
                 {isScoring && <span className="text-xs font-semibold text-green-500 animate-pulse">Saving...</span>}
               </div>
             <div className="grid grid-cols-3 gap-2 md:gap-3 mb-3">
-              {[
-                { label: `+${match.scoringRules.single}`, action: () => handleScore('run', match.scoringRules.single), cls: 'bg-[var(--secondary)]' },
-                { label: `+${match.scoringRules.boundary}`, action: () => handleScore('run', match.scoringRules.boundary), cls: 'bg-[var(--primary)]' },
-                { label: 'Wicket', action: () => handleScore('wicket'), cls: 'bg-red-500' },
-                { label: 'Dot', action: () => handleScore('dot'), cls: 'bg-gray-400' },
-                { label: 'Wide', action: () => handleScore('wide'), cls: 'bg-yellow-500' },
-                { label: 'No Ball', action: () => handleScore('noball'), cls: 'bg-orange-500' },
-              ].map(({ label, action, cls }) => (
-                <button key={label} onClick={action} disabled={isScoring}
-                  className={`${cls} text-white p-3 md:p-4 rounded-lg text-lg md:text-xl font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed`}>
-                  {label}
-                </button>
-              ))}
+              {(() => {
+                const sr = settings?.scoringRules ?? match.scoringRules;
+                const eb = settings?.enabledButtons ?? {};
+                const sixEnabled = eb.six !== false;
+                // When +6 is enabled, move noball to bottom row to keep 3-col grid clean
+                const topButtons = [
+                  { key: 'single',   label: `+${sr?.single ?? 1}`,   action: () => handleScore('run', sr?.single ?? 1),   cls: 'bg-[var(--secondary)]' },
+                  { key: 'boundary', label: `+${sr?.boundary ?? 4}`, action: () => handleScore('run', sr?.boundary ?? 4), cls: 'bg-[var(--primary)]' },
+                  { key: 'six',      label: `+${sr?.six ?? 6}`,      action: () => handleScore('run', sr?.six ?? 6),      cls: 'bg-pink-500' },
+                  { key: 'wicket',   label: 'Wicket',                 action: () => handleScore('wicket'),                 cls: 'bg-red-500' },
+                  { key: 'dot',      label: 'Dot',                    action: () => handleScore('dot'),                    cls: 'bg-gray-400' },
+                  { key: 'wide',     label: 'Wide',                   action: () => handleScore('wide'),                   cls: 'bg-yellow-500' },
+                  ...(sixEnabled ? [] : [{ key: 'noball', label: 'No Ball', action: () => handleScore('noball'), cls: 'bg-orange-500' }]),
+                ].filter(({ key }) => eb[key] !== false);
+                return topButtons.map(({ label, action, cls }) => (
+                  <button key={label} onClick={action} disabled={isScoring}
+                    className={`${cls} text-white p-3 md:p-4 rounded-lg text-base md:text-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed`}>
+                    {label}
+                  </button>
+                ));
+              })()}
             </div>
-            <div className="grid grid-cols-2 gap-2 md:gap-3">
-              <button onClick={() => handleScore('deadball')} disabled={isScoring}
-                className="bg-gray-600 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
-                Dead Ball
-              </button>
+            {/* Bottom row: Dead Ball / No Ball (when +6 on) / Undo */}
+            <div className="grid gap-2 md:gap-3" style={{ gridTemplateColumns: (() => {
+              const eb = settings?.enabledButtons ?? {};
+              const sixEnabled = eb.six !== false;
+              const showNoball = sixEnabled && eb.noball !== false;
+              const showDead = eb.deadball !== false;
+              const cols = [showDead, showNoball, true].filter(Boolean).length;
+              return `repeat(${cols}, 1fr)`;
+            })() }}>
+              {(settings?.enabledButtons?.deadball ?? true) && (
+                <button onClick={() => handleScore('deadball')} disabled={isScoring}
+                  className="bg-gray-600 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
+                  Dead Ball
+                </button>
+              )}
+              {(settings?.enabledButtons?.six ?? true) && (settings?.enabledButtons?.noball ?? true) && (
+                <button onClick={() => handleScore('noball')} disabled={isScoring}
+                  className="bg-orange-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
+                  No Ball
+                </button>
+              )}
               <button onClick={handleUndo} disabled={!match.timeline?.length || isScoring}
                 className="bg-purple-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
                 Undo Last Ball
@@ -1270,7 +1595,7 @@ export default function ScorePage() {
                           <span className="flex items-center gap-1">
                             {isCurrent && <span className="w-2 h-2 rounded-full bg-[var(--primary)] inline-block flex-shrink-0"></span>}
                             {player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}
-                            {stats.out && <span className="text-red-500 ml-1 text-xs">out</span>}
+                            {stats.out && <span className="text-red-500 ml-1 text-xs">b. {stats.dismissedBy ? (allPlayerNameMap[stats.dismissedBy]?.split(' (')[0] || 'out') : 'out'}</span>}
                           </span>
                         </td>
                         <td className="text-center">{stats.runs}</td>

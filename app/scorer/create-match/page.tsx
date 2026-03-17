@@ -16,6 +16,7 @@ export default function CreateMatchPage() {
   const [teamAId, setTeamAId] = useState('');
   const [teamBId, setTeamBId] = useState('');
   const [overs, setOvers] = useState(7);
+  const [defaultSettings, setDefaultSettings] = useState<any>(null);
   
   const [tossWinner, setTossWinner] = useState<'A' | 'B' | ''>('');
   const [showCoinFlip, setShowCoinFlip] = useState(false);
@@ -48,7 +49,6 @@ export default function CreateMatchPage() {
   useEffect(() => {
     fetchPlayers();
     fetch('/api/teams').then(r => r.json()).then(d => {
-      // Deduplicate by name, keep the most recent (first in sorted-by-createdAt desc list)
       const seen = new Set<string>();
       const unique = (d.teams || []).filter((t: any) => {
         if (seen.has(t.name)) return false;
@@ -56,6 +56,12 @@ export default function CreateMatchPage() {
         return true;
       });
       setExistingTeams(unique);
+    });
+    fetch('/api/admin/settings').then(r => r.json()).then(d => {
+      if (d.settings) {
+        setDefaultSettings(d.settings);
+        setOvers(d.settings.defaultOvers ?? 7);
+      }
     });
   }, []);
 
@@ -212,6 +218,9 @@ export default function CreateMatchPage() {
           tossWinner: finalTossWinner,
           tossDecision,
           commonPlayers,
+          scoringRules: defaultSettings?.scoringRules ?? { single: 1, boundary: 4, six: 6, wideRuns: 1, noballRuns: 1 },
+          bowlerOversLimit: defaultSettings?.defaultBowlerOversLimit ?? 2,
+          enabledButtons: defaultSettings?.enabledButtons ?? {},
           innings: {
             first: { battingTeam, bowlingTeam },
             second: { battingTeam: bowlingTeam, bowlingTeam: battingTeam },

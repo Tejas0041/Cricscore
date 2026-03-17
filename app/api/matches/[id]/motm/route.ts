@@ -232,7 +232,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
     const allPlayers = [...match.teamA.players, ...match.teamB.players];
     const playerNameMap: Record<string, string> = {};
-    for (const p of allPlayers) {
+    for (const p of allPlayers as any[]) {
       playerNameMap[p._id.toString()] = p.nickname ? `${p.name} (${p.nickname})` : p.name;
     }
 
@@ -266,12 +266,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const secondInn = match.innings.second;
     let margin = '';
     if (match.winner === 'Tie') margin = 'Match Tied';
-    else if (match.winner === match.teamB.name) {
-      const w = match.teamB.players.length - secondInn.wickets;
-      margin = `${match.winner} won by ${w} wicket${w !== 1 ? 's' : ''}`;
-    } else {
-      const r = firstInn.runs - secondInn.runs;
-      margin = `${match.winner} won by ${r} run${r !== 1 ? 's' : ''}`;
+    else {
+      const secondBattingTeamName = match.innings.second.battingTeam;
+      if (match.winner === secondBattingTeamName) {
+        const secondBattingTeam = secondBattingTeamName === match.teamA.name ? match.teamA : match.teamB;
+        const w = secondBattingTeam.players.length - secondInn.wickets;
+        margin = `${match.winner} won by ${w} wicket${w !== 1 ? 's' : ''}`;
+      } else {
+        const r = firstInn.runs - secondInn.runs;
+        margin = `${match.winner} won by ${r} run${r !== 1 ? 's' : ''}`;
+      }
     }
 
     const date = new Date(match.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -282,10 +286,33 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     prompt += `Result: ${margin}\n`;
     prompt += buildInningsSection(`1ST INNINGS: ${match.teamA.name} batting`, firstInn, match.timeline, 'first', playerCareerMap, playerNameMap, match.overs, false);
     prompt += buildInningsSection(`2ND INNINGS: ${match.teamB.name} batting`, secondInn, match.timeline, 'second', playerCareerMap, playerNameMap, match.overs, true, firstInn.runs + 1);
+
+    // Include super over data if it happened
+    if (match.superOver?.completed) {
+      const so = match.superOver;
+      const soFirst = so.innings.first;
+      const soSecond = so.innings.second;
+      prompt += `\n${'='.repeat(60)}\nSUPER OVER (1 over per side)\n${'='.repeat(60)}\n`;
+      prompt += `${match.teamA.name}: ${soFirst.runs}/${soFirst.wickets}\n`;
+      prompt += `${match.teamB.name}: ${soSecond.runs}/${soSecond.wickets}\n`;
+      prompt += `Super Over Winner: ${so.winner}\n`;
+      const soEvents = match.timeline.filter((e: any) => e.innings === 'so_first' || e.innings === 'so_second');
+      if (soEvents.length > 0) {
+        prompt += `Super Over performances are HIGHLY weighted — a match-winning super over contribution should strongly favour MOTM selection.\n`;
+        for (const e of soEvents) {
+          const bName = playerNameMap[e.batsman?._id?.toString() ?? e.batsman?.toString()] || '?';
+          const wName = playerNameMap[e.bowler?._id?.toString() ?? e.bowler?.toString()] || '?';
+          prompt += `  ${e.innings === 'so_first' ? match.teamA.name : match.teamB.name} | ${bName} vs ${wName}: ${e.eventType}${e.runs ? ' ' + e.runs : ''}\n`;
+        }
+      }
+    }
+
     if (h2hLines.length > 0) {
       prompt += `\nHISTORICAL HEAD-TO-HEAD (career across all matches):\n${h2hLines.join('\n')}\n`;
     }
-    prompt += `\nSELECT ONE Man of the Match. Consider: match-winning contribution, pressure performance, quality of opposition, strike rate/economy in context, crucial wickets, consistency, all-round impact.\n`;
+    prompt += `\nSELECT ONE Man of the Match.\n`;
+    prompt += `\nCRITICAL RULE — WINNING TEAM BIAS: Always strongly favour players from the WINNING team (${match.winner}). Unless a losing team player had a truly exceptional, match-defining performance that clearly stands above every single winning team player (e.g. a century in a losing cause, or 4+ wickets that nearly won the match single-handedly), you MUST select from the winning team. Ordinary good performances (a quick 30, 2 wickets) from the losing side do NOT override winning team contributions. When in doubt, pick the winner's side.\n`;
+    prompt += `\nConsider: match-winning contribution, pressure performance, quality of opposition, strike rate/economy in context, crucial wickets, consistency, all-round impact. If a super over occurred, weight super over performance heavily.\n`;
     prompt += `\nRespond ONLY in this exact JSON (no markdown, no extra text):\n{"motm":"Player Full Name","team":"Team Name","reason":"3-4 sentences with specific stats, pressure context, match-changing moment, why over others"}\n`;
 
     let result: any = null;

@@ -46,9 +46,7 @@ export default function LoginPage() {
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="p-8">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] rounded-2xl flex items-center justify-center">
-              <span className="text-white font-bold text-3xl">C</span>
-            </div>
+            <img src="/favicon.ico" alt="CricScore" className="w-20 h-20 mx-auto mb-4 rounded-2xl" />
             <h1 className="text-3xl font-bold bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] bg-clip-text text-transparent">
               CricScore
             </h1>
