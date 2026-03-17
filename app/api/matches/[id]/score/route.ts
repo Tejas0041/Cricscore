@@ -127,6 +127,8 @@ export async function POST(
       .populate('innings.second.currentBatsman innings.second.currentBowler')
       .populate('timeline.batsman timeline.bowler');
 
+    if (!populatedMatch) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+
     const ci = populatedMatch.currentInnings;
     await pusherServer.trigger('match-' + id, 'score-update', {
       matchId: id,
