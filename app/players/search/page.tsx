@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import BackButton from '@/app/components/BackButton';
@@ -26,7 +26,7 @@ interface Stats {
   motm: { count: number; history: { matchId: string; vs: string; date: string; reason: string; provider: string }[] };
 }
 
-export default function SearchPlayerPage() {
+function SearchPlayerContent() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -275,5 +275,13 @@ export default function SearchPlayerPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function SearchPlayerPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin" /></div>}>
+      <SearchPlayerContent />
+    </Suspense>
   );
 }
