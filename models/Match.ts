@@ -78,6 +78,7 @@ export interface IMatch extends Document {
     deadball: boolean;
   };
   commonPlayers?: mongoose.Types.ObjectId[];
+  bowlerOversLimit?: number;
   superOver?: {
     active: boolean;
     completed: boolean;
