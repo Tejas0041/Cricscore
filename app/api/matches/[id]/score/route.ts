@@ -78,7 +78,9 @@ export async function POST(
       }
       
       // Check if innings is complete (overs done OR all players out OR target chased)
-      const teamPlayers = match.currentInnings === 'first' ? match.teamA.players.length : match.teamB.players.length;
+      const teamPlayers = match.currentInnings === 'first'
+        ? match.teamA.players.length
+        : match.teamB.players.length;
       const targetChased = match.currentInnings === 'second' && innings.runs > match.innings.first.runs;
       if (innings.overs >= match.overs || innings.wickets >= teamPlayers || targetChased) {
         innings.completed = true;
@@ -107,6 +109,12 @@ export async function POST(
     
     match.updatedAt = new Date();
     await match.save();
+
+    // Auto-trigger MOTM when match completes (fire and forget)
+    if (match.status === 'completed') {
+      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      fetch(`${baseUrl}/api/matches/${id}/motm`, { method: 'POST' }).catch(() => {});
+    }
     
     // Update player stats
     if (eventType === 'run' && runs > 0) {

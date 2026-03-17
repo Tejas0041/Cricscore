@@ -43,6 +43,13 @@ export interface IMatch extends Document {
   currentInnings: 'first' | 'second';
   status: 'upcoming' | 'live' | 'completed';
   winner?: string;
+  motm?: {
+    playerId: mongoose.Types.ObjectId;
+    playerName: string;
+    team: string;
+    reason: string;
+    provider: 'gemini' | 'groq';
+  };
   timeline: Array<{
     over: number;
     ball: number;
@@ -57,7 +64,7 @@ export interface IMatch extends Document {
     single: number;
     boundary: number;
   };
-  bowlerOversLimit: number;
+  commonPlayers?: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,6 +112,13 @@ const MatchSchema: Schema = new Schema({
   currentInnings: { type: String, enum: ['first', 'second'], default: 'first' },
   status: { type: String, enum: ['upcoming', 'live', 'completed'], default: 'upcoming' },
   winner: { type: String },
+  motm: {
+    playerId: { type: Schema.Types.ObjectId, ref: 'Player' },
+    playerName: { type: String },
+    team: { type: String },
+    reason: { type: String },
+    provider: { type: String, enum: ['gemini', 'groq'] },
+  },
   timeline: [{
     over: { type: Number },
     ball: { type: Number },
@@ -120,6 +134,7 @@ const MatchSchema: Schema = new Schema({
     boundary: { type: Number, default: 4 },
   },
   bowlerOversLimit: { type: Number, default: 2 },
+  commonPlayers: [{ type: Schema.Types.ObjectId, ref: 'Player' }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import BackButton from '@/app/components/BackButton';
 
 export default function MatchPage() {
   const params = useParams();
@@ -16,6 +17,8 @@ export default function MatchPage() {
   const [selectedToAdd, setSelectedToAdd] = useState('');
   const [saving, setSaving] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
+  const [motm, setMotm] = useState<any>(null);
+  const [motmLoading, setMotmLoading] = useState(false);
 
   const handleUndo = async () => {
     if (isUndoing) return;
@@ -32,8 +35,20 @@ export default function MatchPage() {
       const res = await fetch(`/api/matches/${params.id}`);
       const data = await res.json();
       setMatch(data.match);
+      // load saved MOTM directly from match document
+      if (data.match?.motm?.playerName) setMotm(data.match.motm);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const findMotm = async () => {
+    setMotmLoading(true);
+    try {
+      const res = await fetch(`/api/matches/${params.id}/motm`, { method: 'POST' });
+      const data = await res.json();
+      if (data.motm) setMotm(data.motm);
+    } catch (e) { console.error(e); }
+    finally { setMotmLoading(false); }
   };
 
   useEffect(() => {
@@ -180,8 +195,10 @@ export default function MatchPage() {
   const cwObj = currentInn.currentBowler;
   const cbId = cbObj?._id ? cbObj._id.toString() : cbObj?.toString();
   const cwId = cwObj?._id ? cwObj._id.toString() : cwObj?.toString();
-  const cbName = cbObj?.name || currentBattingTeam.players.find((p: any) => p?._id?.toString() === cbId)?.name;
-  const cwName = cwObj?.name || currentBowlingTeam.players.find((p: any) => p?._id?.toString() === cwId)?.name;
+  const cbPlayer = cbObj?.name ? cbObj : currentBattingTeam.players.find((p: any) => p?._id?.toString() === cbId);
+  const cwPlayer = cwObj?.name ? cwObj : currentBowlingTeam.players.find((p: any) => p?._id?.toString() === cwId);
+  const cbName = cbPlayer ? `${cbPlayer.name}${cbPlayer.nickname ? ` (${cbPlayer.nickname})` : ''}` : undefined;
+  const cwName = cwPlayer ? `${cwPlayer.name}${cwPlayer.nickname ? ` (${cwPlayer.nickname})` : ''}` : undefined;
   const cbStats = cbId ? (currentBatStats[cbId] || { runs: 0, balls: 0, fours: 0 }) : null;
   const cwStats = cwId ? (currentBowlStats[cwId] || { runs: 0, wickets: 0, balls: 0 }) : null;
 
@@ -207,7 +224,7 @@ export default function MatchPage() {
             const isCap = captain && (captain._id?.toString() === pid || captain.toString() === pid);
             return (
               <tr key={pid} className="border-b border-[var(--border)]">
-                <td className="py-2">{player.name}{isCap ? ' (c)' : ''}{s.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
+                <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCap ? ' (c)' : ''}{s.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
                 <td className="text-center">{s.runs}</td><td className="text-center">{s.balls}</td>
                 <td className="text-center">{s.singles}</td><td className="text-center">{s.fours}</td>
                 <td className="text-center">{s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(1) : '-'}</td>
@@ -237,7 +254,7 @@ export default function MatchPage() {
             const isCap = captain && (captain._id?.toString() === pid || captain.toString() === pid);
             return (
               <tr key={pid} className="border-b border-[var(--border)]">
-                <td className="py-2">{player.name}{isCap ? ' (c)' : ''}</td>
+                <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCap ? ' (c)' : ''}</td>
                 <td className="text-center">{Math.floor(s.balls / 6)}.{s.balls % 6}</td>
                 <td className="text-center">{s.runs}</td>
                 <td className="text-center">{s.dots}</td><td className="text-center">{s.wickets}</td>
@@ -310,22 +327,29 @@ export default function MatchPage() {
               </button>
             </div>
             <div className="p-4 space-y-2">
-              {squadPlayers.map((player: any) => (
-                <div key={player._id} className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
-                  <div>
-                    <p className="font-medium">{player.name}</p>
-                    <p className="text-xs opacity-60 capitalize">{player.role}</p>
+              {squadPlayers.map((player: any) => {
+                const pid = player._id?.toString();
+                const isCommon = (match.commonPlayers || []).some((cp: any) => (cp._id || cp).toString() === pid);
+                return (
+                  <div key={player._id} className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{player.name}{player.nickname ? ` (${player.nickname})` : ''}</p>
+                        {isCommon && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-500 font-semibold">Common</span>}
+                      </div>
+                      <p className="text-xs opacity-60 capitalize">{player.role}</p>
+                    </div>
+                    {editMode && (
+                      <button onClick={() => handleRemovePlayer(pid!)} disabled={saving}
+                        className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
-                  {editMode && (
-                    <button onClick={() => handleRemovePlayer(player._id.toString())} disabled={saving}
-                      className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
               {editMode && (
                 <div className="pt-3 space-y-3 border-t border-[var(--border)]">
                   {availableToAdd.length > 0 && (
@@ -335,7 +359,7 @@ export default function MatchPage() {
                         <select value={selectedToAdd} onChange={e => setSelectedToAdd(e.target.value)}
                           className="flex-1 p-2 text-sm bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
                           <option value="">Select player</option>
-                          {availableToAdd.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                          {availableToAdd.map((p: any) => <option key={p._id} value={p._id}>{p.name}{p.nickname ? ` (${p.nickname})` : ''}</option>)}
                         </select>
                         <button onClick={handleAddExisting} disabled={!selectedToAdd || saving}
                           className="px-3 py-2 bg-[var(--primary)] text-white rounded-lg text-sm font-semibold disabled:opacity-50">
@@ -372,9 +396,12 @@ export default function MatchPage() {
       {/* Header */}
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white sticky top-0 z-10 shadow-lg">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="text-base md:text-xl font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
-            <p className="text-xs opacity-90">{match.overs} overs</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <BackButton href="/matches" />
+            <div className="min-w-0">
+              <h1 className="text-base md:text-xl font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
+              <p className="text-xs opacity-90">{match.overs} overs</p>
+            </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button onClick={() => openSquad('A')} className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg font-semibold transition-all">See Squads</button>
@@ -393,6 +420,84 @@ export default function MatchPage() {
 
       <main className="container mx-auto p-4 max-w-4xl space-y-4">
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4 md:p-6">
+        {/* MOTM Card — above result */}
+        {match.status === 'completed' && (
+          <div className="mb-4">
+            {motm ? (() => {
+              // Compute MOTM's stats from this match's timeline
+              const motmId = motm.playerId?.toString();
+              let batRuns = 0, batBalls = 0, batFours = 0, batOut = false;
+              let bowlRuns = 0, bowlBalls = 0, bowlWickets = 0;
+              if (motmId) {
+                for (const e of match.timeline) {
+                  const bId = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
+                  const wId = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+                  if (bId === motmId) {
+                    if (e.eventType === 'run') { batRuns += e.runs; batBalls++; if (e.runs === 4) batFours++; }
+                    else if (e.eventType === 'dot') batBalls++;
+                    else if (e.eventType === 'wicket') { batBalls++; batOut = true; }
+                  }
+                  if (wId === motmId) {
+                    if (e.eventType === 'run') { bowlRuns += e.runs; bowlBalls++; }
+                    else if (e.eventType === 'dot') bowlBalls++;
+                    else if (e.eventType === 'wicket') { bowlWickets++; bowlBalls++; }
+                  }
+                }
+              }
+              const batSR = batBalls > 0 ? ((batRuns / batBalls) * 100).toFixed(0) : '0';
+              const bowlOv = `${Math.floor(bowlBalls / 6)}.${bowlBalls % 6}`;
+              const bowlEcon = bowlBalls > 0 ? (bowlRuns / (bowlBalls / 6)).toFixed(1) : '-';
+              return (
+                <div className="p-4 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/40 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-600">Man of the Match</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] opacity-70 capitalize">{motm.provider}</span>
+                      {isScorer && (
+                        <button onClick={findMotm} disabled={motmLoading}
+                          className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] hover:bg-[var(--border)] transition-colors disabled:opacity-50">
+                          {motmLoading ? '...' : 'Re-find'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                    <p className="text-lg font-bold">🏅 {motm.playerName}</p>
+                    <p className="text-sm opacity-50">{motm.team}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs flex-wrap mb-2">
+                    {batBalls > 0 && (
+                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 text-green-600 font-semibold">
+                        <span className="opacity-60 font-normal">Bat</span>
+                        {batRuns}{batOut ? '' : '*'}({batBalls}) SR {batSR}{batFours > 0 ? ` · ${batFours}(4s)` : ''}
+                      </span>
+                    )}
+                    {bowlBalls > 0 && (
+                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/15 text-orange-600 font-semibold">
+                        <span className="opacity-60 font-normal">Bowl</span>
+                        {bowlWickets}/{bowlRuns} ({bowlOv}ov) Econ {bowlEcon}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm opacity-80 leading-relaxed">{motm.reason}</p>
+                </div>
+              );
+            })() : motmLoading ? (
+              <div className="flex items-center justify-center gap-2 text-sm opacity-60 py-2">
+                <div className="w-4 h-4 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                Finding Man of the Match...
+              </div>
+            ) : isScorer ? (
+              <div className="flex justify-center">
+                <button onClick={findMotm}
+                  className="px-6 py-2.5 bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-all">
+                  🏅 Find Man of the Match
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+
           {match.status === 'completed' && winMessage && (
             <div className="mb-4 p-3 bg-[var(--primary)]/10 border border-[var(--primary)] rounded-lg text-center">
               <p className="font-bold text-[var(--primary)]">🏆 {winMessage}</p>

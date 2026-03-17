@@ -1,10 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import DatePicker from '@/app/components/DatePicker';
+import BackButton from '@/app/components/BackButton';
 
-type StatCategory = 'batting' | 'bowling' | 'teams';
-type BattingMetric = 'runs' | 'strikeRate' | 'average';
-type BowlingMetric = 'wickets' | 'economy' | 'strikeRate';
+type StatCategory = 'batting' | 'bowling' | 'teams' | 'motm';
+type BattingMetric = 'runs' | 'strikeRate' | 'average' | 'highestScore' | 'fours';
+type BowlingMetric = 'wickets' | 'economy' | 'strikeRate' | 'bestFigures';
+type DateFilter = 'today' | 'yesterday' | 'all';
+
+function isSameDay(a: Date, b: Date) {
+  return a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
+}
 
 export default function StatsPage() {
   const [stats, setStats] = useState<any>(null);
@@ -12,29 +19,46 @@ export default function StatsPage() {
   const [category, setCategory] = useState<StatCategory>('batting');
   const [battingMetric, setBattingMetric] = useState<BattingMetric>('runs');
   const [bowlingMetric, setBowlingMetric] = useState<BowlingMetric>('wickets');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [pickedDate, setPickedDate] = useState<Date | null>(null);
 
-  useEffect(() => {
-    fetch('/api/stats')
+  const fetchStats = (filter: DateFilter, picked: Date | null) => {
+    setLoading(true);
+    let param = '';
+    if (picked) {
+      const y = picked.getFullYear();
+      const m = String(picked.getMonth() + 1).padStart(2, '0');
+      const d = String(picked.getDate()).padStart(2, '0');
+      param = `?date=${y}-${m}-${d}`;
+    } else if (filter !== 'all') {
+      param = `?date=${filter}`;
+    }
+    fetch(`/api/stats${param}`)
       .then(r => r.json())
       .then(setStats)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { fetchStats('all', null); }, []);
 
   const battingData = (() => {
     if (!stats?.battingStats) return [];
     return [...stats.battingStats]
       .filter((p: any) => {
         if (battingMetric === 'runs') return p.runs > 0;
+        if (battingMetric === 'highestScore') return p.highestScore > 0;
+        if (battingMetric === 'fours') return p.fours > 0;
         return p.balls >= 5;
       })
       .sort((a: any, b: any) => {
         if (battingMetric === 'runs') return b.runs - a.runs;
         if (battingMetric === 'strikeRate') return b.strikeRate - a.strikeRate;
         if (battingMetric === 'average') return b.average - a.average;
+        if (battingMetric === 'highestScore') return b.highestScore - a.highestScore;
+        if (battingMetric === 'fours') return b.fours - a.fours;
         return 0;
-      })
-      .slice(0, 10);
+      });
   })();
 
   const bowlingData = (() => {
@@ -42,24 +66,30 @@ export default function StatsPage() {
     return [...stats.bowlingStats]
       .filter((p: any) => {
         if (bowlingMetric === 'wickets') return p.wickets > 0;
-        if (bowlingMetric === 'strikeRate') return p.wickets > 0; // must have wickets for meaningful SR
+        if (bowlingMetric === 'strikeRate') return p.wickets > 0;
+        if (bowlingMetric === 'bestFigures') return p.bestFigures?.wickets > 0;
         return p.balls > 0;
       })
       .sort((a: any, b: any) => {
         if (bowlingMetric === 'wickets') return b.wickets - a.wickets;
         if (bowlingMetric === 'economy') return a.economy - b.economy;
         if (bowlingMetric === 'strikeRate') return a.bowlingStrikeRate - b.bowlingStrikeRate;
+        if (bowlingMetric === 'bestFigures') {
+          if (b.bestFigures.wickets !== a.bestFigures.wickets) return b.bestFigures.wickets - a.bestFigures.wickets;
+          return a.bestFigures.runs - b.bestFigures.runs;
+        }
         return 0;
-      })
-      .slice(0, 10);
+      });
   })();
 
   const teamData = (stats?.topTeams || [])
-    .filter((t: any) => (t.stats?.wins || 0) > 0)
-    .slice(0, 10);
+    .filter((t: any) => (t.stats?.wins || 0) > 0);
+
+  const motmData = (stats?.motmStats || []).filter((m: any) => m.count > 0);
 
   const hasData = category === 'batting' ? battingData.length > 0
     : category === 'bowling' ? bowlingData.length > 0
+    : category === 'motm' ? motmData.length > 0
     : teamData.length > 0;
 
   if (loading) return (
@@ -72,13 +102,31 @@ export default function StatsPage() {
     <div className="min-h-screen">
       <div className="bg-gradient-to-br from-[var(--accent)] to-[var(--secondary)] text-white">
         <div className="container mx-auto px-4 py-12">
-          <h1 className="text-3xl md:text-4xl font-bold">Statistics</h1>
+          <BackButton href="/" />
+          <h1 className="text-3xl md:text-4xl font-bold mt-2">Statistics</h1>
           <p className="mt-2 opacity-90">Top performers and team standings</p>
         </div>
       </div>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-xl p-6">
+          {/* Date filter */}
+          <div className="mb-6 space-y-3">
+            <DatePicker
+              value={pickedDate}
+              onChange={d => { setPickedDate(d); if (d) { setDateFilter('all'); fetchStats('all', d); } }}
+              placeholder="Pick a date (dd/mm/yyyy)"
+            />
+            <div className="flex gap-2">
+              {(['all', 'today', 'yesterday'] as DateFilter[]).map(f => (
+                <button key={f} onClick={() => { setPickedDate(null); setDateFilter(f); fetchStats(f, null); }}
+                  className={`flex-1 py-2 rounded-lg font-semibold text-sm capitalize transition-all ${!pickedDate && dateFilter === f ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
+                  {f === 'today' ? 'Today' : f === 'yesterday' ? 'Yesterday' : 'All'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="flex-1">
               <label className="block text-sm font-semibold mb-2">Category</label>
@@ -87,6 +135,7 @@ export default function StatsPage() {
                 <option value="batting">Batting</option>
                 <option value="bowling">Bowling</option>
                 <option value="teams">Teams</option>
+                <option value="motm">Man of the Match</option>
               </select>
             </div>
 
@@ -95,7 +144,9 @@ export default function StatsPage() {
                 <label className="block text-sm font-semibold mb-2">Metric</label>
                 <select value={battingMetric} onChange={e => setBattingMetric(e.target.value as BattingMetric)}
                   className="w-full p-3 bg-[var(--muted)] border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all">
-                  <option value="runs">Runs</option>
+                  <option value="runs">Most Runs</option>
+                  <option value="highestScore">Highest Score</option>
+                  <option value="fours">Most 4s</option>
                   <option value="strikeRate">Strike Rate (min 5 balls)</option>
                   <option value="average">Average (min 5 balls)</option>
                 </select>
@@ -107,7 +158,8 @@ export default function StatsPage() {
                 <label className="block text-sm font-semibold mb-2">Metric</label>
                 <select value={bowlingMetric} onChange={e => setBowlingMetric(e.target.value as BowlingMetric)}
                   className="w-full p-3 bg-[var(--muted)] border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all">
-                  <option value="wickets">Wickets</option>
+                  <option value="wickets">Most Wickets</option>
+                  <option value="bestFigures">Best Figures</option>
                   <option value="economy">Economy Rate</option>
                   <option value="strikeRate">Strike Rate (balls/wicket)</option>
                 </select>
@@ -134,18 +186,27 @@ export default function StatsPage() {
                       {idx + 1}
                     </div>
                     <div>
-                      <p className="font-bold">{player.name}</p>
-                      <p className="text-xs opacity-60">{player.innings} inning{player.innings !== 1 ? 's' : ''} · {player.balls} balls</p>
+                      <p className="font-bold">{player.name}{player.nickname ? ` (${player.nickname})` : ''}</p>
+                      <p className="text-xs opacity-60">
+                        {battingMetric === 'highestScore' && `${player.highestBalls} balls · SR ${player.highestSR.toFixed(1)}`}
+                        {battingMetric === 'fours' && `${player.innings} inn`}
+                        {battingMetric === 'runs' && `${player.innings} inn · ${player.balls} balls`}
+                        {(battingMetric === 'strikeRate' || battingMetric === 'average') && `${player.innings} inn · ${player.balls} balls`}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-bold text-[var(--primary)]">
                       {battingMetric === 'runs' && player.runs}
+                      {battingMetric === 'highestScore' && player.highestScore}
+                      {battingMetric === 'fours' && player.fours}
                       {battingMetric === 'strikeRate' && player.strikeRate.toFixed(1)}
                       {battingMetric === 'average' && player.average.toFixed(1)}
                     </p>
                     <p className="text-xs opacity-60">
                       {battingMetric === 'runs' && `${player.balls} balls`}
+                      {battingMetric === 'highestScore' && 'HS'}
+                      {battingMetric === 'fours' && '4s'}
                       {battingMetric === 'strikeRate' && 'SR'}
                       {battingMetric === 'average' && 'Avg'}
                     </p>
@@ -163,8 +224,12 @@ export default function StatsPage() {
                         {idx + 1}
                       </div>
                       <div>
-                        <p className="font-bold">{player.name}</p>
-                        <p className="text-xs opacity-60">{ov}.{bl} overs{bowlingMetric !== 'wickets' ? ` · ${player.runs} runs` : ''}</p>
+                        <p className="font-bold">{player.name}{player.nickname ? ` (${player.nickname})` : ''}</p>
+                        <p className="text-xs opacity-60">
+                          {bowlingMetric !== 'bestFigures' && (bowlingMetric === 'wickets'
+                            ? `${ov}.${bl} overs`
+                            : `${ov}.${bl} overs · ${player.runs} runs`)}
+                        </p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -172,11 +237,13 @@ export default function StatsPage() {
                         {bowlingMetric === 'wickets' && player.wickets}
                         {bowlingMetric === 'economy' && player.economy.toFixed(2)}
                         {bowlingMetric === 'strikeRate' && (player.bowlingStrikeRate > 0 ? player.bowlingStrikeRate.toFixed(1) : '—')}
+                        {bowlingMetric === 'bestFigures' && `${player.bestFigures.wickets}-${player.bestFigures.runs}`}
                       </p>
                       <p className="text-xs opacity-60">
                         {bowlingMetric === 'wickets' && 'wickets'}
                         {bowlingMetric === 'economy' && 'Econ'}
                         {bowlingMetric === 'strikeRate' && 'SR'}
+                        {bowlingMetric === 'bestFigures' && ''}
                       </p>
                     </div>
                   </div>
@@ -197,6 +264,23 @@ export default function StatsPage() {
                   <div className="text-right">
                     <p className="text-2xl font-bold text-[var(--accent)]">{team.stats?.wins || 0}</p>
                     <p className="text-xs opacity-60">wins</p>
+                  </div>
+                </div>
+              ))}
+              {category === 'motm' && motmData.map((m: any, idx: number) => (
+                <div key={m.name} className="flex items-center justify-between p-4 bg-[var(--muted)] rounded-xl hover:scale-[1.01] transition-transform">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-orange-500 text-white rounded-full flex items-center justify-center font-bold">
+                      {idx === 0 ? '🏆' : idx + 1}
+                    </div>
+                    <div>
+                      <p className="font-bold">{m.name}</p>
+                      <p className="text-xs opacity-60">{m.team}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-yellow-500">{m.count}</p>
+                    <p className="text-xs opacity-60">MOTM</p>
                   </div>
                 </div>
               ))}

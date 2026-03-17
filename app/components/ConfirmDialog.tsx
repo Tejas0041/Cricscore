@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
@@ -21,15 +24,21 @@ export default function ConfirmDialog({
   onCancel,
   danger = false,
 }: ConfirmDialogProps) {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      <div
         className="fixed inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onCancel}
       />
-      <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+      <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl max-w-md w-full p-6">
         <h3 className="text-xl font-bold mb-3">{title}</h3>
         <p className="opacity-80 mb-6">{message}</p>
         <div className="flex gap-3">
@@ -51,6 +60,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -119,12 +119,6 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          <div className="mt-6 text-center text-sm opacity-60">
-            <p>Default credentials:</p>
-            <p>Scorer: scorer / scorer</p>
-            <p>Admin: admin / admin</p>
-          </div>
         </div>
       </div>
     </div>

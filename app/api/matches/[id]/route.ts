@@ -13,6 +13,7 @@ export async function GET(
     const { id } = await params;
     const match = await Match.findById(id)
       .populate('teamA.players teamA.captain teamB.players teamB.captain')
+      .populate('commonPlayers')
       .populate('innings.first.currentBatsman innings.first.currentBowler')
       .populate('innings.second.currentBatsman innings.second.currentBowler')
       .populate('timeline.batsman timeline.bowler');

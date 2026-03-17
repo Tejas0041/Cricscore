@@ -21,6 +21,7 @@ export interface IPlayer extends Document {
       strikeRate: number;
     };
   };
+  motmCount: number;
   createdAt: Date;
 }
 
@@ -49,6 +50,7 @@ const PlayerSchema: Schema = new Schema({
       strikeRate: { type: Number, default: 0 },
     },
   },
+  motmCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
 });
 

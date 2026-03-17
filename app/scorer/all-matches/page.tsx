@@ -3,12 +3,10 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
+import DatePicker from '@/app/components/DatePicker';
+import BackButton from '@/app/components/BackButton';
 
-type DateFilter = 'today' | 'yesterday' | 'all' | string; // string = custom date key
-
-function toDateKey(date: Date) {
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
+type DateFilter = 'today' | 'yesterday' | 'all';
 
 function isSameDay(a: Date, b: Date) {
   return a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
@@ -17,7 +15,8 @@ function isSameDay(a: Date, b: Date) {
 export default function AllMatchesPage() {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [pickedDate, setPickedDate] = useState<Date | null>(null);
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
   const pusherRef = useRef<any>(null);
   const channelsRef = useRef<any[]>([]);
@@ -73,28 +72,23 @@ export default function AllMatchesPage() {
     });
   };
 
-  // Assign overall index and per-day index
   const matchesWithMeta = matches.map((m, i) => {
     const d = new Date(m.createdAt);
-    return { ...m, overallNo: i + 1, _date: d, _dateKey: toDateKey(d) };
+    return { ...m, overallNo: i + 1, _date: d };
   });
 
-  // Per-day numbering
   const dayCount: Record<string, number> = {};
   matchesWithMeta.forEach(m => {
-    dayCount[m._dateKey] = (dayCount[m._dateKey] || 0) + 1;
-    m.dayNo = dayCount[m._dateKey];
+    const k = m._date.toDateString();
+    dayCount[k] = (dayCount[k] || 0) + 1;
+    m.dayNo = dayCount[k];
   });
 
-  // Unique date keys for custom date picker
-  const uniqueDates = [...new Set(matchesWithMeta.map(m => m._dateKey))];
-
-  // Filter
   const filtered = matchesWithMeta.filter(m => {
+    if (pickedDate) return isSameDay(m._date, pickedDate);
     if (dateFilter === 'today') return isSameDay(m._date, today);
     if (dateFilter === 'yesterday') return isSameDay(m._date, yesterday);
-    if (dateFilter === 'all') return true;
-    return m._dateKey === dateFilter;
+    return true; // 'all'
   });
 
   const todayCount = matchesWithMeta.filter(m => isSameDay(m._date, today)).length;
@@ -130,35 +124,32 @@ export default function AllMatchesPage() {
 
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white">
         <div className="container mx-auto px-4 py-10">
-          <h1 className="text-3xl font-bold">All Matches</h1>
+          <BackButton href="/scorer" />
+          <h1 className="text-3xl font-bold mt-2">All Matches</h1>
           <p className="mt-1 opacity-90 text-sm">{matches.length} total · {todayCount} today</p>
         </div>
       </div>
 
       <main className="container mx-auto px-4 py-6 max-w-3xl">
-        {/* Date filter tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-          <button onClick={() => setDateFilter('today')}
-            className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-sm transition-all ${dateFilter === 'today' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
-            Today ({todayCount})
-          </button>
-          <button onClick={() => setDateFilter('yesterday')}
-            className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-sm transition-all ${dateFilter === 'yesterday' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
-            Yesterday ({yesterdayCount})
-          </button>
-          <button onClick={() => setDateFilter('all')}
-            className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-sm transition-all ${dateFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
-            All ({matches.length})
-          </button>
-          {/* Other dates */}
-          {uniqueDates
-            .filter(dk => dk !== toDateKey(today) && dk !== toDateKey(yesterday))
-            .map(dk => (
-              <button key={dk} onClick={() => setDateFilter(dk)}
-                className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-sm transition-all ${dateFilter === dk ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
-                {dk}
+        {/* Date picker + filter buttons */}
+        <div className="mb-6 space-y-3">
+          <DatePicker
+            value={pickedDate}
+            onChange={d => { setPickedDate(d); if (d) setDateFilter('all'); }}
+            placeholder="Pick a date (dd/mm/yyyy)"
+          />
+          <div className="flex gap-2">
+            {([
+              { key: 'all', label: `All (${matches.length})` },
+              { key: 'today', label: `Today (${todayCount})` },
+              { key: 'yesterday', label: `Yesterday (${yesterdayCount})` },
+            ] as { key: DateFilter; label: string }[]).map(({ key, label }) => (
+              <button key={key} onClick={() => { setDateFilter(key); setPickedDate(null); }}
+                className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-all ${!pickedDate && dateFilter === key ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
+                {label}
               </button>
             ))}
+          </div>
         </div>
 
         {filtered.length === 0 ? (
@@ -187,7 +178,7 @@ export default function AllMatchesPage() {
                     <div className="flex items-center gap-2 text-xs opacity-60">
                       <span>#{match.overallNo}</span>
                       <span>·</span>
-                      <span>Match {match.dayNo} · {match._dateKey}</span>
+                      <span>Match {match.dayNo} · {match._date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                       <span>·</span>
                       <span>{matchTime}</span>
                     </div>
@@ -236,7 +227,9 @@ export default function AllMatchesPage() {
                       </div>
                       {wMsg && (
                         <div className="pt-1 border-t border-[var(--border)]">
-                          <p className="text-xs font-semibold text-[var(--primary)]">{wMsg}</p>
+                          <p className="text-xs font-semibold text-[var(--primary)]">
+                            {wMsg}{match.motm?.playerName ? <span className="opacity-60 font-normal"> (MOTM: {match.motm.playerName})</span> : null}
+                          </p>
                         </div>
                       )}
                     </div>

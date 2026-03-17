@@ -30,16 +30,24 @@ export async function POST(request: NextRequest) {
     
     const data = await request.json();
     
-    const match = await Match.create({
+    const created = await Match.create({
       teamA: data.teamA,
       teamB: data.teamB,
       overs: data.overs,
       tossWinner: data.tossWinner,
       tossDecision: data.tossDecision,
+      innings: data.innings || undefined,
       scoringRules: data.scoringRules || { single: 1, boundary: 4 },
       bowlerOversLimit: data.bowlerOversLimit || 2,
+      commonPlayers: data.commonPlayers || [],
     });
-    
+
+    const match = await Match.findById(created._id)
+      .populate('teamA.players teamA.captain teamB.players teamB.captain')
+      .populate('commonPlayers')
+      .populate('innings.first.currentBatsman innings.first.currentBowler')
+      .populate('innings.second.currentBatsman innings.second.currentBowler');
+
     return NextResponse.json({ match }, { status: 201 });
   } catch (error: any) {
     console.error('Create match error:', error);

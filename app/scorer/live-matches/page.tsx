@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
+import BackButton from '@/app/components/BackButton';
 
 export default function LiveMatchesPage() {
   const [matches, setMatches] = useState<any[]>([]);
@@ -78,7 +79,8 @@ export default function LiveMatchesPage() {
       
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white">
         <div className="container mx-auto px-4 py-12">
-          <h1 className="text-3xl md:text-4xl font-bold">All Matches</h1>
+          <BackButton href="/scorer" />
+          <h1 className="text-3xl md:text-4xl font-bold mt-2">All Matches</h1>
           <p className="mt-2 opacity-90">Manage and score matches</p>
         </div>
       </div>

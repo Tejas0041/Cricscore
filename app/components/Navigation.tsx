@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from './ThemeProvider';
 import { useState, useEffect } from 'react';
+import ConfirmDialog from './ConfirmDialog';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -12,6 +13,7 @@ export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -102,7 +104,7 @@ export default function Navigation() {
                   <div className="hidden md:flex items-center gap-2">
                     <span className="text-sm opacity-60 px-3">{user.username}</span>
                     <button
-                      onClick={handleLogout}
+                      onClick={() => setShowLogoutConfirm(true)}
                       className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all"
                     >
                       Logout
@@ -173,7 +175,7 @@ export default function Navigation() {
                       </div>
                       <button
                         onClick={() => {
-                          handleLogout();
+                          setShowLogoutConfirm(true);
                           setMobileMenuOpen(false);
                         }}
                         className="w-full text-left px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all mt-2"
@@ -196,6 +198,16 @@ export default function Navigation() {
           </div>
         </>
       )}
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        title="Logout"
+        message="Are you sure you want to logout?"
+        confirmText="Logout"
+        cancelText="Cancel"
+        danger
+        onConfirm={() => { setShowLogoutConfirm(false); handleLogout(); }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </nav>
   );
 }

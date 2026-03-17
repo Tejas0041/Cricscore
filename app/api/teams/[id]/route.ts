@@ -42,10 +42,25 @@ export async function PATCH(
 
     await dbConnect();
     const { id } = await params;
-    const { addPlayerIds, removePlayerIds, newPlayer } = await request.json();
+    const { addPlayerIds, removePlayerIds, newPlayer, setPlayers, captain, name } = await request.json();
 
     const team = await Team.findById(id);
     if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+
+    // Rename team
+    if (name !== undefined) {
+      team.name = name;
+    }
+
+    // Bulk replace players list (used when creating a match with existing team)
+    if (setPlayers !== undefined) {
+      team.players = setPlayers;
+    }
+
+    // Update captain if provided
+    if (captain !== undefined) {
+      team.captain = captain || undefined;
+    }
 
     // Create and add a new player if provided
     if (newPlayer?.name && newPlayer?.role) {

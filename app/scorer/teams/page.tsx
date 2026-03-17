@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
+import BackButton from '@/app/components/BackButton';
 
 export default function ManageTeamsPage() {
   const [teams, setTeams] = useState<any[]>([]);
@@ -78,7 +79,8 @@ export default function ManageTeamsPage() {
 
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white">
         <div className="container mx-auto px-4 py-10">
-          <h1 className="text-3xl font-bold">Manage Teams</h1>
+          <BackButton href="/scorer" />
+          <h1 className="text-3xl font-bold mt-2">Manage Teams</h1>
           <p className="mt-1 opacity-90 text-sm">{teams.length} teams</p>
         </div>
       </div>

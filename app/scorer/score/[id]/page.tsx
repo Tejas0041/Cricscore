@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import ConfirmDialog from '@/app/components/ConfirmDialog';
+import BackButton from '@/app/components/BackButton';
 
 export default function ScorePage() {
   const params = useParams();
@@ -22,6 +23,7 @@ export default function ScorePage() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerRole, setNewPlayerRole] = useState('allrounder');
   const [selectedToAdd, setSelectedToAdd] = useState('');
+  const [selectedCommon, setSelectedCommon] = useState('');
   const [savingSquad, setSavingSquad] = useState(false);
   const [editingOvers, setEditingOvers] = useState(false);
   const [tempOvers, setTempOvers] = useState('');
@@ -34,6 +36,8 @@ export default function ScorePage() {
   const [tossFlipping, setTossFlipping] = useState(false);
   const [newMatchOvers, setNewMatchOvers] = useState('');
   const [creatingMatch, setCreatingMatch] = useState(false);
+  const [motm, setMotm] = useState<any>(null);
+  const [motmLoading, setMotmLoading] = useState(false);
   const matchRef = useRef<any>(null);
   const isScoringRef = useRef(false);
 
@@ -81,7 +85,9 @@ export default function ScorePage() {
   }, [params.id]);
 
   const syncPlayersFromMatch = (m: any) => {
+    if (!m?.innings || !m.currentInnings) return;
     const innings = m.innings[m.currentInnings];
+    if (!innings) return;
     const cb = innings.currentBatsman;
     const cbw = innings.currentBowler;
     if (cb) {
@@ -99,8 +105,14 @@ export default function ScorePage() {
   const fetchMatch = async () => {
     try {
       const res = await fetch(`/api/matches/${params.id}`);
+      if (!res.ok) {
+        console.error('Error fetching match:', res.status);
+        return;
+      }
       const data = await res.json();
+      if (!data.match) return;
       setMatch(data.match);
+      if (data.match?.motm?.playerName) setMotm(data.match.motm);
       syncPlayersFromMatch(data.match);
     } catch (error) {
       console.error('Error fetching match:', error);
@@ -108,6 +120,33 @@ export default function ScorePage() {
       setLoading(false);
     }
   };
+
+  const findMotm = async () => {
+    setMotmLoading(true);
+    try {
+      const res = await fetch(`/api/matches/${params.id}/motm`, { method: 'POST' });
+      const data = await res.json();
+      if (data.motm) setMotm(data.motm);
+    } catch (e) { console.error(e); }
+    finally { setMotmLoading(false); }
+  };
+
+  // Poll for MOTM after match completes (auto-fire may take a few seconds)
+  useEffect(() => {
+    if (!match || match.status !== 'completed' || motm) return;
+    const interval = setInterval(async () => {
+      const res = await fetch(`/api/matches/${params.id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.match?.motm?.playerName) {
+        setMotm(data.match.motm);
+        clearInterval(interval);
+      }
+    }, 2000);
+    // Stop polling after 30s
+    const timeout = setTimeout(() => clearInterval(interval), 30000);
+    return () => { clearInterval(interval); clearTimeout(timeout); };
+  }, [match?.status, motm]);
 
   const handleSavePlayers = async (batsmanId?: string, bowlerId?: string) => {
     const bat = batsmanId ?? tempBatsman;
@@ -181,6 +220,18 @@ export default function ScorePage() {
         .map((p: any) => (p._id || p).toString())
         .filter((id: string) => id !== pid);
       await syncMatchPlayers(squadModal.team, currentPlayers);
+
+      // If removed player was common, remove from commonPlayers list
+      // (they remain in the other team as a permanent member)
+      const commonIds = (match.commonPlayers || []).map((p: any) => (p._id || p).toString());
+      if (commonIds.includes(pid)) {
+        const newCommon = commonIds.filter((id: string) => id !== pid);
+        await fetch(`/api/matches/${params.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commonPlayers: newCommon }),
+        });
+      }
+
       await fetchMatch();
       const r = await fetch('/api/players');
       setAllPlayers((await r.json()).players || []);
@@ -207,6 +258,38 @@ export default function ScorePage() {
       const r = await fetch('/api/players');
       setAllPlayers((await r.json()).players || []);
       setSelectedToAdd('');
+    } finally {
+      setSavingSquad(false);
+    }
+  };
+
+  const handleAddCommon = async () => {
+    if (!selectedCommon) return;
+    setSavingSquad(true);
+    try {
+      const otherTeam = squadModal.team === 'A' ? 'B' : 'A';
+      // Add to both teams' squads
+      for (const team of [squadModal.team, otherTeam] as const) {
+        const teamId = getSquadTeamId(team);
+        await fetch(`/api/teams/${teamId}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addPlayerIds: [selectedCommon] }),
+        });
+        const currentPlayers = (team === 'A' ? match.teamA.players : match.teamB.players)
+          .map((p: any) => (p._id || p).toString());
+        if (!currentPlayers.includes(selectedCommon)) currentPlayers.push(selectedCommon);
+        await syncMatchPlayers(team, currentPlayers);
+      }
+      // Add to commonPlayers list
+      const existingCommon = (match.commonPlayers || []).map((p: any) => (p._id || p).toString());
+      if (!existingCommon.includes(selectedCommon)) {
+        await fetch(`/api/matches/${params.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commonPlayers: [...existingCommon, selectedCommon] }),
+        });
+      }
+      await fetchMatch();
+      setSelectedCommon('');
     } finally {
       setSavingSquad(false);
     }
@@ -269,24 +352,26 @@ export default function ScorePage() {
     if (!match) return;
     setCreatingMatch(true);
     try {
-      // Determine batting/bowling order based on selection
-      const teamABatsFirst = newMatchBattingFirst === 'A';
+      // Swap teamA/teamB so the batting-first team is always teamA
+      const batFirst = newMatchBattingFirst === 'A' ? match.teamA : match.teamB;
+      const batSecond = newMatchBattingFirst === 'A' ? match.teamB : match.teamA;
       const body = {
         teamA: {
-          id: match.teamA.id || match.teamA._id,
-          name: match.teamA.name,
-          players: match.teamA.players.map((p: any) => p._id || p),
-          captain: match.teamA.captain?._id || match.teamA.captain,
+          id: batFirst.id || batFirst._id,
+          name: batFirst.name,
+          players: batFirst.players.map((p: any) => p._id || p),
+          captain: batFirst.captain?._id || batFirst.captain,
         },
         teamB: {
-          id: match.teamB.id || match.teamB._id,
-          name: match.teamB.name,
-          players: match.teamB.players.map((p: any) => p._id || p),
-          captain: match.teamB.captain?._id || match.teamB.captain,
+          id: batSecond.id || batSecond._id,
+          name: batSecond.name,
+          players: batSecond.players.map((p: any) => p._id || p),
+          captain: batSecond.captain?._id || batSecond.captain,
         },
         overs: newMatchOvers ? parseInt(newMatchOvers) : match.overs,
         scoringRules: match.scoringRules,
         bowlerOversLimit: match.bowlerOversLimit,
+        commonPlayers: (match.commonPlayers || []).map((p: any) => p._id || p),
       };
       const res = await fetch('/api/matches', {
         method: 'POST',
@@ -747,25 +832,44 @@ export default function ScorePage() {
               ))}
             </div>
             <div className="p-4 space-y-2">
-              {(squadModal.team === 'A' ? match.teamA.players : match.teamB.players).map((player: any) => (
-                <div key={player._id} className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
-                  <div>
-                    <p className="font-medium">{player.name}</p>
-                    <p className="text-xs opacity-60 capitalize">{player.role}</p>
+              {(squadModal.team === 'A' ? match.teamA.players : match.teamB.players).map((player: any) => {
+                const pid = player._id?.toString();
+                const isCommon = (match.commonPlayers || []).some((cp: any) => (cp._id || cp).toString() === pid);
+                return (
+                  <div key={player._id} className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{player.name}{player.nickname ? ` (${player.nickname})` : ''}</p>
+                        {isCommon && <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-500 font-semibold">Common</span>}
+                      </div>
+                      <p className="text-xs opacity-60 capitalize">{player.role}</p>
+                    </div>
+                    {squadEditMode && (
+                      <button onClick={() => handleSquadRemove(pid!)} disabled={savingSquad}
+                        className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
-                  {squadEditMode && (
-                    <button onClick={() => handleSquadRemove(player._id.toString())} disabled={savingSquad}
-                      className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
               {squadEditMode && (() => {
                 const teamPlayers = squadModal.team === 'A' ? match.teamA.players : match.teamB.players;
+                const allTeamIds = new Set([
+                  ...match.teamA.players.map((p: any) => p._id?.toString()),
+                  ...match.teamB.players.map((p: any) => p._id?.toString()),
+                ]);
                 const available = allPlayers.filter((p: any) => !teamPlayers.some((sp: any) => sp._id?.toString() === p._id?.toString()));
+                // Players not in either team — candidates to add as common
+                const commonCandidates = allPlayers.filter((p: any) => {
+                  const pid = p._id?.toString();
+                  const alreadyCommon = (match.commonPlayers || []).some((cp: any) => (cp._id || cp).toString() === pid);
+                  const inAnyTeam = match.teamA.players.some((sp: any) => sp._id?.toString() === pid) ||
+                                    match.teamB.players.some((sp: any) => sp._id?.toString() === pid);
+                  return !alreadyCommon && !inAnyTeam;
+                });
                 return (
                   <div className="pt-3 space-y-3 border-t border-[var(--border)]">
                     {available.length > 0 && (
@@ -775,10 +879,24 @@ export default function ScorePage() {
                           <select value={selectedToAdd} onChange={e => setSelectedToAdd(e.target.value)}
                             className="flex-1 p-2 text-sm bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)]">
                             <option value="">Select player</option>
-                            {available.map((p: any) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                            {available.map((p: any) => <option key={p._id} value={p._id}>{p.name}{p.nickname ? ` (${p.nickname})` : ''}</option>)}
                           </select>
                           <button onClick={handleSquadAddExisting} disabled={!selectedToAdd || savingSquad}
                             className="px-3 py-2 bg-[var(--primary)] text-white rounded-lg text-sm font-semibold disabled:opacity-50">Add</button>
+                        </div>
+                      </div>
+                    )}
+                    {commonCandidates.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-purple-500 mb-1">Add common player (from remaining players)</p>
+                        <div className="flex gap-2">
+                          <select value={selectedCommon} onChange={e => setSelectedCommon(e.target.value)}
+                            className="flex-1 p-2 text-sm bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="">Select player</option>
+                            {commonCandidates.map((p: any) => <option key={p._id} value={p._id}>{p.name}{p.nickname ? ` (${p.nickname})` : ''}</option>)}
+                          </select>
+                          <button onClick={handleAddCommon} disabled={!selectedCommon || savingSquad}
+                            className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold disabled:opacity-50">Common</button>
                         </div>
                       </div>
                     )}
@@ -808,19 +926,22 @@ export default function ScorePage() {
       )}
 
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white sticky top-0 z-10 shadow-lg">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="text-base md:text-xl font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
-            <p className="text-sm opacity-90">Scoring Panel</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => { setTempOvers(match.overs.toString()); setEditingOvers(true); }}
-              className="flex-shrink-0 text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg font-semibold transition-all">
-              {match.overs} Overs
-            </button>
-            <button onClick={() => openSquad('A')} className="flex-shrink-0 text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg font-semibold transition-all">
-              See Squads
-            </button>
+        <div className="container mx-auto px-4 py-3 flex items-start justify-between gap-x-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <BackButton href="/scorer/all-matches" />
+            <div className="min-w-0">
+              <h1 className="text-base md:text-xl font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
+              <p className="text-sm opacity-90">Scoring Panel</p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <button onClick={() => { setTempOvers(match.overs.toString()); setEditingOvers(true); }}
+                  className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap">
+                  {match.overs} Overs
+                </button>
+                <button onClick={() => openSquad('A')} className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap">
+                  See Squads
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -834,7 +955,7 @@ export default function ScorePage() {
               <p className="text-3xl md:text-4xl font-bold text-[var(--primary)]">
                 {innings.runs}/{innings.wickets}
               </p>
-              <p className="text-sm opacity-60">Overs: {innings.overs}.{innings.balls}</p>
+              <p className="text-sm opacity-60">Overs: {innings.overs}.{innings.balls} ({match.overs})</p>
             </div>
             <div className="text-right">
               <p className="text-xs md:text-sm opacity-60">Run Rate</p>
@@ -933,7 +1054,7 @@ export default function ScorePage() {
                 >
                   <option value="">Select Batsman</option>
                   {availableBatsmen.map((player: any) => (
-                    <option key={player._id} value={player._id}>{player.name}</option>
+                    <option key={player._id} value={player._id}>{player.name}{player.nickname ? ` (${player.nickname})` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -955,7 +1076,7 @@ export default function ScorePage() {
                 >
                   <option value="">Select Bowler</option>
                   {availableBowlers.map((player: any) => (
-                    <option key={player._id} value={player._id}>{player.name}</option>
+                    <option key={player._id} value={player._id}>{player.name}{player.nickname ? ` (${player.nickname})` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -984,13 +1105,17 @@ export default function ScorePage() {
               <div className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
                 <span className="text-sm opacity-60">Batsman</span>
                 <span className="font-semibold">
-                  {battingTeam.players.find((p: any) => p?._id?.toString() === currentBatsman)?.name || 'Select'}
+                  {battingTeam.players.find((p: any) => p?._id?.toString() === currentBatsman)
+                    ? (() => { const p = battingTeam.players.find((p: any) => p?._id?.toString() === currentBatsman); return `${p.name}${p.nickname ? ` (${p.nickname})` : ''}`; })()
+                    : 'Select'}
                 </span>
               </div>
               <div className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
                 <span className="text-sm opacity-60">Bowler</span>
                 <span className="font-semibold">
-                  {bowlingTeam.players.find((p: any) => p?._id?.toString() === currentBowler)?.name || 'Select'}
+                  {bowlingTeam.players.find((p: any) => p?._id?.toString() === currentBowler)
+                    ? (() => { const p = bowlingTeam.players.find((p: any) => p?._id?.toString() === currentBowler); return `${p.name}${p.nickname ? ` (${p.nickname})` : ''}`; })()
+                    : 'Select'}
                 </span>
               </div>
             </div>
@@ -1005,6 +1130,74 @@ export default function ScorePage() {
               {match.winner === 'Tie' ? 'Match Tied!' : winMessage}
             </p>
             <p className="opacity-60 text-sm text-center">Match has ended</p>
+
+            {/* MOTM */}
+            {motm ? (() => {
+              const motmId = motm.playerId?.toString();
+              let batRuns = 0, batBalls = 0, batFours = 0, batOut = false;
+              let bowlRuns = 0, bowlBalls = 0, bowlWickets = 0;
+              if (motmId) {
+                for (const e of match.timeline) {
+                  const bId = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
+                  const wId = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+                  if (bId === motmId) {
+                    if (e.eventType === 'run') { batRuns += e.runs; batBalls++; if (e.runs === 4) batFours++; }
+                    else if (e.eventType === 'dot') batBalls++;
+                    else if (e.eventType === 'wicket') { batBalls++; batOut = true; }
+                  }
+                  if (wId === motmId) {
+                    if (e.eventType === 'run') { bowlRuns += e.runs; bowlBalls++; }
+                    else if (e.eventType === 'dot') bowlBalls++;
+                    else if (e.eventType === 'wicket') { bowlWickets++; bowlBalls++; }
+                  }
+                }
+              }
+              const batSR = batBalls > 0 ? ((batRuns / batBalls) * 100).toFixed(0) : '0';
+              const bowlOv = `${Math.floor(bowlBalls / 6)}.${bowlBalls % 6}`;
+              const bowlEcon = bowlBalls > 0 ? (bowlRuns / (bowlBalls / 6)).toFixed(1) : '-';
+              return (
+                <div className="p-3 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/40 rounded-xl">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-600">Man of the Match</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] opacity-70 capitalize">{motm.provider}</span>
+                      <button onClick={findMotm} disabled={motmLoading}
+                        className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] hover:bg-[var(--border)] transition-colors disabled:opacity-50">
+                        {motmLoading ? '...' : 'Re-find'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                    <p className="font-bold">🏅 {motm.playerName}</p>
+                    <p className="text-xs opacity-50">{motm.team}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs flex-wrap mb-1.5">
+                    {batBalls > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 font-semibold">
+                        Bat {batRuns}{batOut ? '' : '*'}({batBalls}) SR {batSR}{batFours > 0 ? ` · ${batFours}(4s)` : ''}
+                      </span>
+                    )}
+                    {bowlBalls > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-600 font-semibold">
+                        Bowl {bowlWickets}/{bowlRuns} ({bowlOv}ov) Econ {bowlEcon}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs opacity-70 leading-relaxed">{motm.reason}</p>
+                </div>
+              );
+            })() : motmLoading ? (
+              <div className="flex items-center justify-center gap-2 text-sm opacity-60 py-1">
+                <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                Finding Man of the Match...
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 text-xs opacity-50 py-1 animate-pulse">
+                <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                Calculating MOTM...
+              </div>
+            )}
+
             <button onClick={handleUndo} disabled={!match.timeline?.length || isScoring}
               className="w-full bg-purple-500 text-white p-3 rounded-lg font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
               Undo Last Ball
@@ -1016,7 +1209,10 @@ export default function ScorePage() {
           </div>
         ) : (
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4 md:p-6">
-            <h3 className="font-bold mb-3">Scoring</h3>
+            <div className="flex items-center gap-2 mb-3">
+                <h3 className="font-bold">Scoring</h3>
+                {isScoring && <span className="text-xs font-semibold text-green-500 animate-pulse">Saving...</span>}
+              </div>
             <div className="grid grid-cols-3 gap-2 md:gap-3 mb-3">
               {[
                 { label: `+${match.scoringRules.single}`, action: () => handleScore('run', match.scoringRules.single), cls: 'bg-[var(--secondary)]' },
@@ -1073,7 +1269,7 @@ export default function ScorePage() {
                         <td className="py-2">
                           <span className="flex items-center gap-1">
                             {isCurrent && <span className="w-2 h-2 rounded-full bg-[var(--primary)] inline-block flex-shrink-0"></span>}
-                            {player.name}{isCaptain ? ' (c)' : ''}
+                            {player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}
                             {stats.out && <span className="text-red-500 ml-1 text-xs">out</span>}
                           </span>
                         </td>
@@ -1120,7 +1316,7 @@ export default function ScorePage() {
                         <td className="py-2">
                           <span className="flex items-center gap-1">
                             {isCurrent && <span className="w-2 h-2 rounded-full bg-red-500 inline-block flex-shrink-0"></span>}
-                            {player.name}{isCaptain ? ' (c)' : ''}
+                            {player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}
                           </span>
                         </td>
                         <td className="text-center">{overs}.{balls}</td>
@@ -1170,7 +1366,7 @@ export default function ScorePage() {
                         const isCaptain = firstBattingTeam.captain && (firstBattingTeam.captain._id?.toString() === pid || firstBattingTeam.captain.toString() === pid);
                         return (
                           <tr key={pid} className="border-b border-[var(--border)]">
-                            <td className="py-2">{player.name}{isCaptain ? ' (c)' : ''}{stats.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
+                            <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}{stats.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
                             <td className="text-center">{stats.runs}</td>
                             <td className="text-center">{stats.balls}</td>
                             <td className="text-center">{stats.singles}</td>
@@ -1209,7 +1405,7 @@ export default function ScorePage() {
                         const isCaptain = firstBowlingTeam.captain && (firstBowlingTeam.captain._id?.toString() === pid || firstBowlingTeam.captain.toString() === pid);
                         return (
                           <tr key={pid} className="border-b border-[var(--border)]">
-                            <td className="py-2">{player.name}{isCaptain ? ' (c)' : ''}</td>
+                            <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}</td>
                             <td className="text-center">{overs}.{balls}</td>
                             <td className="text-center">{stats.runs}</td>
                             <td className="text-center">{stats.dots}</td>
