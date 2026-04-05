@@ -71,6 +71,21 @@ export async function POST(
 
       innings.completed = false;
 
+      if (!isSuperOverInnings) {
+        // If we just undid the ball that completed the 1st innings, revert back to first innings
+        if (inningsKey === 'first' && match.currentInnings === 'second') {
+          match.currentInnings = 'first';
+          // Clear the 2nd innings that was auto-initialized
+          match.innings.second.runs = 0;
+          match.innings.second.wickets = 0;
+          match.innings.second.overs = 0;
+          match.innings.second.balls = 0;
+          match.innings.second.completed = false;
+          match.innings.second.currentBatsman = undefined;
+          match.innings.second.currentBowler = undefined;
+        }
+      }
+
       if (isSuperOverInnings) {
         // Revert super over state
         if (match.superOver) {

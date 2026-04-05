@@ -100,37 +100,48 @@ export default function MatchesPage() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin"></div>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-[var(--background)]">
+      <div className="glass-card rounded-3xl p-7 flex flex-col items-center gap-3">
+        <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold opacity-80">Loading matches</p>
+      </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen">
-      <div className="bg-gradient-to-br from-[var(--secondary)] to-[var(--primary)] text-white">
-        <div className="container mx-auto px-4 py-10">
+    <div className="min-h-screen pb-8">
+      <div className="container mx-auto px-4 pt-8 md:pt-10 max-w-4xl">
+        <div className="hero-glow glass-card rounded-[2rem] p-6 md:p-8">
           <BackButton href="/" />
-          <h1 className="text-3xl font-bold mt-2">All Matches</h1>
-          <p className="mt-1 opacity-90 text-sm">{matches.length} total · {todayCount} today</p>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mt-2">Match Center</h1>
+          <p className="mt-2 text-sm md:text-base text-[var(--foreground)]/75">
+            Browse all fixtures, jump into live games, and revisit finished scorecards.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="feature-chip rounded-full px-3 py-1 text-xs font-semibold">{matches.length} total</span>
+            <span className="feature-chip rounded-full px-3 py-1 text-xs font-semibold">{todayCount} today</span>
+            <span className="feature-chip rounded-full px-3 py-1 text-xs font-semibold">{yesterdayCount} yesterday</span>
+          </div>
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-6 max-w-3xl">
-        {/* Date picker + filter buttons */}
-        <div className="mb-6 space-y-3">
+      <div style={{marginBottom: '-50px'}}></div>
+
+      <main className="container mx-auto px-4 pt-1 pb-3 max-w-4xl">
+        <div className="glass-card rounded-2xl p-4 md:p-5 mb-32 sticky top-20 z-[1]">
           <DatePicker
             value={pickedDate}
             onChange={d => { setPickedDate(d); if (d) setDateFilter('all'); }}
             placeholder="Pick a date (dd/mm/yyyy)"
           />
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2 mt-3">
             {([
               { key: 'all', label: `All (${matches.length})` },
               { key: 'today', label: `Today (${todayCount})` },
               { key: 'yesterday', label: `Yesterday (${yesterdayCount})` },
             ] as { key: DateFilter; label: string }[]).map(({ key, label }) => (
               <button key={key} onClick={() => { setDateFilter(key); setPickedDate(null); }}
-                className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-all ${!pickedDate && dateFilter === key ? 'bg-[var(--primary)] text-white' : 'bg-[var(--muted)] hover:bg-[var(--border)]'}`}>
+                className={`py-2.5 rounded-xl font-semibold text-sm transition-all ${!pickedDate && dateFilter === key ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white shadow-md' : 'bg-[var(--muted)]/70 hover:bg-[var(--muted)]'}`}>
                 {label}
               </button>
             ))}
@@ -138,7 +149,7 @@ export default function MatchesPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-16 opacity-50">
+          <div className="glass-card rounded-2xl text-center py-16 opacity-80">
             <svg className="w-12 h-12 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -151,9 +162,9 @@ export default function MatchesPage() {
               const hasSecond = match.currentInnings === 'second' || match.innings.second.runs > 0 || match.innings.second.wickets > 0;
               const wMsg = winMessage(match);
               return (
-                <Link key={match._id} href={`/match/${match._id}`} className="block">
-                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-all active:scale-[0.99]">
-                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)] bg-[var(--muted)]">
+                <Link key={match._id} href={`/match/${match._id}`} className="block relative z-0">
+                  <div className="glass-card elevated-hover rounded-2xl overflow-hidden active:scale-[0.99]">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)] bg-[var(--muted)]/60">
                       <div className="flex items-center gap-2 text-xs opacity-60">
                         <span>#{match.overallNo}</span>
                         <span>·</span>
@@ -196,7 +207,7 @@ export default function MatchesPage() {
                         </div>
                       </div>
                       {wMsg && (
-                        <div className="pt-1 border-t border-[var(--border)]">
+                        <div className="pt-2 border-t border-[var(--border)]">
                           <p className="text-xs font-semibold text-[var(--primary)]">
                             {wMsg}{match.motm?.playerName ? <span className="opacity-60 font-normal"> (MOTM: {match.motm.playerName})</span> : null}
                           </p>

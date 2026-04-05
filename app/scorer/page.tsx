@@ -10,6 +10,8 @@ export default function ScorerPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [updatingRankings, setUpdatingRankings] = useState(false);
+  const [rankingsUpdated, setRankingsUpdated] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -58,6 +60,22 @@ export default function ScorerPage() {
     setUser(null);
   };
 
+  const handleUpdateRankings = async () => {
+    setUpdatingRankings(true); setRankingsUpdated(false);
+    try {
+      const res = await fetch('/api/rankings/update', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setRankingsUpdated(true);
+        setTimeout(() => setRankingsUpdated(false), 3000);
+      } else {
+        alert('Failed to update rankings: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      alert('Error updating rankings: ' + error);
+    } finally { setUpdatingRankings(false); }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -72,7 +90,7 @@ export default function ScorerPage() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-[var(--card)] border border-[var(--border)] p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="glass-card p-6 md:p-8 rounded-2xl shadow-2xl w-full max-w-md">
           <div className="text-center mb-8">
             <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] rounded-2xl flex items-center justify-center">
               <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -96,7 +114,7 @@ export default function ScorerPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full p-3 bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                className="ui-input"
                 placeholder="Enter username"
                 required
               />
@@ -108,7 +126,7 @@ export default function ScorerPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 bg-[var(--muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                className="ui-input"
                 placeholder="Enter password"
                 required
               />
@@ -116,7 +134,7 @@ export default function ScorerPage() {
             
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-3 rounded-lg font-semibold hover:opacity-90 transition-all"
+              className="ui-btn w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-3 rounded-lg font-semibold hover:opacity-90 transition-all"
             >
               Login
             </button>
@@ -127,17 +145,17 @@ export default function ScorerPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white">
-        <div className="container mx-auto px-4 py-12">
+    <div className="min-h-screen pb-8">
+      <div className="container mx-auto px-4 pt-8 md:pt-10">
+        <div className="hero-glow glass-card rounded-[2rem] p-8 md:p-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold">Scorer Panel</h1>
-              <p className="mt-2 opacity-90">Welcome, {user.username}</p>
+              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Scorer Panel</h1>
+              <p className="mt-2 text-sm md:text-base text-[var(--foreground)]/75">Welcome, {user.username}. Manage live games and squads from one place.</p>
             </div>
-            <button 
-              onClick={handleLogout} 
-              className="bg-white/20 backdrop-blur-sm px-6 py-2 rounded-lg hover:bg-white/30 transition-all w-fit"
+            <button
+              onClick={handleLogout}
+              className="ui-btn px-6 py-2.5 rounded-xl bg-rose-500/90 text-white hover:bg-rose-500 w-fit font-semibold"
             >
               Logout
             </button>
@@ -149,7 +167,7 @@ export default function ScorerPage() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <button
             onClick={() => router.push('/scorer/create-match')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-xl hover:shadow-xl hover:scale-[1.02] transition-all text-left group"
+            className="glass-card elevated-hover p-6 rounded-xl transition-all text-left group"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -162,7 +180,7 @@ export default function ScorerPage() {
 
           <button
             onClick={() => router.push('/scorer/all-matches')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-xl hover:shadow-xl hover:scale-[1.02] transition-all text-left group"
+            className="glass-card elevated-hover p-6 rounded-xl transition-all text-left group"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -175,7 +193,7 @@ export default function ScorerPage() {
 
           <button
             onClick={() => router.push('/scorer/players')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-xl hover:shadow-xl hover:scale-[1.02] transition-all text-left group"
+            className="glass-card elevated-hover p-6 rounded-xl transition-all text-left group"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-[var(--accent)] to-yellow-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -188,7 +206,7 @@ export default function ScorerPage() {
 
           <button
             onClick={() => router.push('/scorer/teams')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-xl hover:shadow-xl hover:scale-[1.02] transition-all text-left group"
+            className="glass-card elevated-hover p-6 rounded-xl transition-all text-left group"
           >
             <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -197,6 +215,26 @@ export default function ScorerPage() {
             </div>
             <h2 className="text-xl font-bold mb-2">Manage Teams</h2>
             <p className="text-sm opacity-60">View stats and match history</p>
+          </button>
+
+          <button
+            onClick={handleUpdateRankings}
+            disabled={updatingRankings}
+            className="glass-card elevated-hover p-6 rounded-xl transition-all text-left group disabled:opacity-60"
+          >
+            <div className="w-12 h-12 bg-gradient-to-br from-green-600 to-emerald-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              {updatingRankings ? (
+                <div className="w-6 h-6 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+              )}
+            </div>
+            <h2 className="text-xl font-bold mb-2">
+              {updatingRankings ? 'Updating...' : rankingsUpdated ? '✓ Rankings Updated' : 'Update Rankings'}
+            </h2>
+            <p className="text-sm opacity-60">Recalculate CricScore Rankings</p>
           </button>
         </div>
       </main>

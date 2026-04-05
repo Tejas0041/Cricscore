@@ -209,7 +209,7 @@ export default function AdminPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <div className="bg-[var(--card)] border border-[var(--border)] p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <div className="glass-card p-8 rounded-2xl shadow-xl w-full max-w-md">
           <h1 className="text-2xl font-bold mb-6">Admin Login</h1>
           
           {error && (
@@ -225,7 +225,7 @@ export default function AdminPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full p-3 bg-[var(--muted)] border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                className="ui-input"
                 required
               />
             </div>
@@ -236,14 +236,14 @@ export default function AdminPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 bg-[var(--muted)] border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                className="ui-input"
                 required
               />
             </div>
             
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-3 rounded-xl font-semibold hover:opacity-90 transition-all shadow-lg"
+              className="ui-btn w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-3 rounded-xl font-semibold hover:opacity-90 transition-all shadow-lg"
             >
               Login
             </button>
@@ -376,23 +376,23 @@ export default function AdminPage() {
         </div>
       )}
 
-      <header className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white p-4">
-        <div className="container mx-auto flex justify-between items-center">
+      <header className="container mx-auto px-4 pt-8 md:pt-10">
+        <div className="hero-glow glass-card rounded-[2rem] p-6 md:p-8 flex justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <BackButton href="/" />
-            <h1 className="text-2xl font-bold">Admin Panel</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Admin Panel</h1>
           </div>
-          <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded hover:bg-red-600 transition-all">
+          <button onClick={handleLogout} className="ui-btn bg-red-500 px-4 py-2 rounded-xl hover:bg-red-600 transition-all text-white font-semibold">
             Logout
           </button>
         </div>
       </header>
 
-      <main className="container mx-auto p-4">
+      <main className="container mx-auto p-4 md:py-8">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <button
             onClick={() => router.push('/scorer/create-match')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2">Create Match</h2>
             <p className="opacity-60">Start a new match</p>
@@ -400,7 +400,7 @@ export default function AdminPage() {
           
           <button
             onClick={() => router.push('/scorer/live-matches')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2">Manage Matches</h2>
             <p className="opacity-60">Edit or delete matches</p>
@@ -408,7 +408,7 @@ export default function AdminPage() {
           
           <button
             onClick={() => router.push('/scorer/players')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2">Manage Players</h2>
             <p className="opacity-60">Add, edit, or delete players</p>
@@ -416,7 +416,7 @@ export default function AdminPage() {
 
           <button
             onClick={openTeamsModal}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2">Manage Teams</h2>
             <p className="opacity-60">View stats, rename or delete teams</p>
@@ -424,7 +424,7 @@ export default function AdminPage() {
           
           <button
             onClick={handleClearStats}
-            className="bg-[var(--card)] border-2 border-red-500 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover border-2 border-red-500 p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2 text-red-500">Clear All Stats</h2>
             <p className="opacity-60">Reset all player statistics to zero</p>
@@ -432,7 +432,7 @@ export default function AdminPage() {
 
           <button
             onClick={() => setPwModal(true)}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2">Change Password</h2>
             <p className="opacity-60">Update your admin password</p>
@@ -440,7 +440,7 @@ export default function AdminPage() {
           
           <button
             onClick={() => router.push('/admin/settings')}
-            className="bg-[var(--card)] border border-[var(--border)] p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+            className="glass-card elevated-hover p-6 rounded-2xl transition-all text-left"
           >
             <h2 className="text-xl font-bold mb-2">Settings</h2>
             <p className="opacity-60">Configure scoring rules</p>

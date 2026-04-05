@@ -30,6 +30,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [updatingRankings, setUpdatingRankings] = useState(false);
+  const [rankingsUpdated, setRankingsUpdated] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json()).then(d => {
@@ -85,6 +87,22 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } finally { setSaving(false); }
+  };
+
+  const handleUpdateRankings = async () => {
+    setUpdatingRankings(true); setRankingsUpdated(false);
+    try {
+      const res = await fetch('/api/rankings/update', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setRankingsUpdated(true);
+        setTimeout(() => setRankingsUpdated(false), 3000);
+      } else {
+        alert('Failed to update rankings: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      alert('Error updating rankings: ' + error);
+    } finally { setUpdatingRankings(false); }
   };
 
   if (!authed || loading) return (
@@ -182,6 +200,18 @@ export default function SettingsPage() {
         </button>
 
         <p className="text-xs text-center opacity-40">Changes apply to new matches only, not existing ones</p>
+
+        {/* CricScore Rankings Update */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 mt-6">
+          <p className="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">CricScore Rankings</p>
+          <p className="text-sm opacity-70 mb-4">Recalculate player rankings based on all completed matches. This processes batting, bowling, and all-rounder performances using ICC-style weighted averages.</p>
+          <button onClick={handleUpdateRankings} disabled={updatingRankings}
+            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white p-4 rounded-2xl font-bold hover:opacity-90 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+            {updatingRankings && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+            {updatingRankings ? 'Updating Rankings...' : rankingsUpdated ? '✓ Rankings Updated' : '🏆 Update Rankings'}
+          </button>
+          <p className="text-xs text-center opacity-40 mt-2">This may take a few seconds for large datasets</p>
+        </div>
       </main>
     </div>
   );

@@ -42,8 +42,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)]">
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="glass-card rounded-[1.6rem] shadow-2xl w-full max-w-md overflow-hidden">
         <div className="p-8">
           <div className="text-center mb-8">
             <img src="/favicon.ico" alt="CricScore" className="w-20 h-20 mx-auto mb-4 rounded-2xl" />
@@ -60,7 +60,7 @@ export default function LoginPage() {
               className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
                 role === 'scorer'
                   ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white shadow-lg'
-                  : 'bg-[var(--muted)] hover:bg-[var(--border)]'
+                    : 'bg-[var(--muted)]/70 hover:bg-[var(--border)]'
               }`}
             >
               Scorer
@@ -71,7 +71,7 @@ export default function LoginPage() {
               className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all ${
                 role === 'admin'
                   ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white shadow-lg'
-                  : 'bg-[var(--muted)] hover:bg-[var(--border)]'
+                    : 'bg-[var(--muted)]/70 hover:bg-[var(--border)]'
               }`}
             >
               Admin
@@ -91,7 +91,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full p-4 bg-[var(--muted)] border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                className="ui-input p-4"
                 placeholder="Enter your username"
                 required
               />
@@ -103,7 +103,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-4 bg-[var(--muted)] border border-[var(--border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
+                className="ui-input p-4"
                 placeholder="Enter your password"
                 required
               />
@@ -112,7 +112,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-4 rounded-xl font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-lg"
+              className="ui-btn w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white p-4 rounded-xl font-bold hover:opacity-90 transition-all disabled:opacity-50 shadow-lg"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </button>

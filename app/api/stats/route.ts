@@ -194,7 +194,139 @@ export async function GET(request: Request) {
     }
     const motmStats = Object.values(motmCount).sort((a, b) => b.count - a.count);
 
-    return NextResponse.json({ battingStats, bowlingStats, topTeams, motmStats });
+    // Captain's record leaderboard
+    const captainQuery: any = { status: 'completed', winner: { $exists: true, $ne: 'Tie' } };
+    if (dateFilter) captainQuery.createdAt = dateFilter;
+    const captainMatches = await Match.find(captainQuery).populate('teamA.captain teamB.captain');
+    const captainRecord: Record<string, { id: string; name: string; team: string; wins: number; matches: number }> = {};
+    
+    for (const m of captainMatches) {
+      const capA = m.teamA.captain;
+      const capB = m.teamB.captain;
+      
+      if (capA) {
+        const keyA = `${capA._id}_${m.teamA.name}`;
+        if (!captainRecord[keyA]) captainRecord[keyA] = { id: capA._id.toString(), name: (capA as any).name, team: m.teamA.name, wins: 0, matches: 0 };
+        captainRecord[keyA].matches++;
+        if (m.winner === m.teamA.name) captainRecord[keyA].wins++;
+      }
+      
+      if (capB) {
+        const keyB = `${capB._id}_${m.teamB.name}`;
+        if (!captainRecord[keyB]) captainRecord[keyB] = { id: capB._id.toString(), name: (capB as any).name, team: m.teamB.name, wins: 0, matches: 0 };
+        captainRecord[keyB].matches++;
+        if (m.winner === m.teamB.name) captainRecord[keyB].wins++;
+      }
+    }
+    const captainStats = Object.values(captainRecord).filter(c => c.wins > 0).sort((a, b) => b.wins - a.wins);
+
+    // ── Winning Contributions ─────────────────────────────────────────
+    // Only count stats from matches where the player's team won
+    const winBattingMap: Record<string, { runs: number; balls: number; innings: number; outs: number; highestScore: number; highestBalls: number; fours: number }> = {};
+    const winBowlingMap: Record<string, { runs: number; balls: number; wickets: number }> = {};
+    const winBestFiguresMap: Record<string, { wickets: number; runs: number }> = {};
+
+    const wonMatches = await Match.find({ ...matchQuery, status: 'completed', winner: { $exists: true, $ne: 'Tie' } })
+      .populate('teamA.players teamB.players');
+
+    for (const match of wonMatches) {
+      const matchId = match._id.toString();
+      const winner = match.winner as string;
+
+      // For each player, determine if they were on the winning team
+      const winningPlayers = new Set<string>();
+      const teamAWon = winner === match.teamA.name;
+      const winningTeamPlayers = teamAWon ? match.teamA.players : match.teamB.players;
+      for (const p of winningTeamPlayers as any[]) {
+        winningPlayers.add(p._id?.toString() ?? p.toString());
+      }
+
+      const inningsStats: Record<string, Record<string, { runs: number; balls: number; fours: number; out: boolean }>> = { first: {}, second: {} };
+
+      for (const event of match.timeline) {
+        const inn = event.innings as string;
+        const bId = event.batsman?.toString();
+        const bowId = event.bowler?.toString();
+
+        if (bId && winningPlayers.has(bId)) {
+          if (!winBattingMap[bId]) winBattingMap[bId] = { runs: 0, balls: 0, innings: 0, outs: 0, highestScore: 0, highestBalls: 0, fours: 0 };
+          if (!inningsStats[inn]) inningsStats[inn] = {};
+          if (!inningsStats[inn][bId]) { inningsStats[inn][bId] = { runs: 0, balls: 0, fours: 0, out: false }; winBattingMap[bId].innings++; }
+
+          if (event.eventType === 'run') {
+            winBattingMap[bId].runs += event.runs;
+            winBattingMap[bId].balls++;
+            inningsStats[inn][bId].runs += event.runs;
+            inningsStats[inn][bId].balls++;
+            if (event.runs === 4) { winBattingMap[bId].fours++; inningsStats[inn][bId].fours++; }
+          } else if (event.eventType === 'dot') {
+            winBattingMap[bId].balls++;
+            inningsStats[inn][bId].balls++;
+          } else if (event.eventType === 'wicket') {
+            winBattingMap[bId].balls++;
+            winBattingMap[bId].outs++;
+            inningsStats[inn][bId].balls++;
+          }
+        }
+
+        if (bowId && winningPlayers.has(bowId)) {
+          if (!winBowlingMap[bowId]) winBowlingMap[bowId] = { runs: 0, balls: 0, wickets: 0 };
+          if (event.eventType === 'run') { winBowlingMap[bowId].runs += event.runs; winBowlingMap[bowId].balls++; }
+          else if (event.eventType === 'dot') winBowlingMap[bowId].balls++;
+          else if (event.eventType === 'wicket') { winBowlingMap[bowId].wickets++; winBowlingMap[bowId].balls++; }
+        }
+      }
+
+      // Highest score in wins
+      for (const inn of ['first', 'second']) {
+        for (const [bId, s] of Object.entries(inningsStats[inn] || {})) {
+          if (!winBattingMap[bId]) continue;
+          if (s.runs > winBattingMap[bId].highestScore) {
+            winBattingMap[bId].highestScore = s.runs;
+            winBattingMap[bId].highestBalls = s.balls;
+          }
+        }
+      }
+
+      // Best bowling figures in wins
+      for (const inn of ['first', 'second']) {
+        const inningsBowling: Record<string, { wickets: number; runs: number }> = {};
+        for (const event of match.timeline.filter((e: any) => e.innings === inn)) {
+          const bowId = event.bowler?.toString();
+          if (!bowId || !winningPlayers.has(bowId)) continue;
+          if (!inningsBowling[bowId]) inningsBowling[bowId] = { wickets: 0, runs: 0 };
+          if (event.eventType === 'wicket') inningsBowling[bowId].wickets++;
+          if (event.eventType === 'run') inningsBowling[bowId].runs += event.runs;
+        }
+        for (const [bowId, fig] of Object.entries(inningsBowling)) {
+          if (!winBestFiguresMap[bowId]) { winBestFiguresMap[bowId] = fig; continue; }
+          const cur = winBestFiguresMap[bowId];
+          if (fig.wickets > cur.wickets || (fig.wickets === cur.wickets && fig.runs < cur.runs)) winBestFiguresMap[bowId] = fig;
+        }
+      }
+    }
+
+    const winBattingStats = Object.entries(winBattingMap)
+      .map(([pid, s]) => {
+        const player = playerMap[pid];
+        if (!player) return null;
+        const sr = s.balls > 0 ? (s.runs / s.balls) * 100 : 0;
+        const avg = s.outs > 0 ? s.runs / s.outs : s.runs;
+        const highestSR = s.highestBalls > 0 ? (s.highestScore / s.highestBalls) * 100 : 0;
+        return { _id: pid, name: player.name, nickname: player.nickname, runs: s.runs, balls: s.balls, innings: s.innings, outs: s.outs, strikeRate: sr, average: avg, highestScore: s.highestScore, highestBalls: s.highestBalls, highestSR, fours: s.fours };
+      }).filter(Boolean);
+
+    const winBowlingStats = Object.entries(winBowlingMap)
+      .map(([pid, s]) => {
+        const player = playerMap[pid];
+        if (!player) return null;
+        const economy = s.balls > 0 ? s.runs / (s.balls / 6) : 0;
+        const bowlingSR = s.wickets > 0 ? s.balls / s.wickets : 0;
+        const best = winBestFiguresMap[pid] || { wickets: 0, runs: 0 };
+        return { _id: pid, name: player.name, nickname: player.nickname, wickets: s.wickets, runs: s.runs, balls: s.balls, economy, bowlingStrikeRate: bowlingSR, bestFigures: best };
+      }).filter(Boolean);
+
+    return NextResponse.json({ battingStats, bowlingStats, topTeams, motmStats, captainStats, winBattingStats, winBowlingStats });
   } catch (error) {
     console.error('Get stats error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

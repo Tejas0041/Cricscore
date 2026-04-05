@@ -33,23 +33,26 @@ export default function PlayersPage() {
   );
 
   return (
-    <div className="min-h-screen">
-      <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white">
-        <div className="container mx-auto px-4 py-10">
+    <div className="min-h-screen pb-8">
+      <div className="container mx-auto px-4 pt-8 md:pt-10">
+        <div className="hero-glow glass-card rounded-[2rem] p-8 md:p-10">
           <BackButton href="/" />
-          <h1 className="text-3xl font-bold mb-1 mt-2">Players</h1>
-          <p className="opacity-80 text-sm">All registered players and their career stats</p>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-1 mt-2">Player Hub</h1>
+          <p className="text-sm md:text-base text-[var(--foreground)]/75">Explore every registered player with quick-glance career metrics.</p>
+          <div className="mt-4 inline-flex feature-chip rounded-full px-3 py-1 text-xs font-semibold">
+            {players.length} registered players
+          </div>
         </div>
       </div>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-6">
+        <div className="mb-6 glass-card rounded-2xl p-4">
           <input
             type="text"
             placeholder="Search player..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl bg-[var(--card)] border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+            className="w-full px-4 py-3 rounded-xl bg-[var(--muted)]/40 border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] transition-colors"
           />
         </div>
 
@@ -58,35 +61,42 @@ export default function PlayersPage() {
             <div className="w-10 h-10 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-10 text-center opacity-60">
+          <div className="glass-card rounded-2xl p-10 text-center opacity-70">
             No players found
           </div>
         ) : (
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-            {/* Header */}
-            <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-4 py-3 bg-[var(--muted)] border-b border-[var(--border)] text-xs font-semibold opacity-60 uppercase tracking-wide">
-              <span>Player</span>
-              <span className="w-12 text-center">M</span>
-              <span className="w-12 text-center">Inn</span>
-              <span className="w-12 text-center">Runs</span>
-              <span className="w-12 text-center">Wkts</span>
-              <span className="w-12 text-center">MOTM</span>
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px] text-sm">
+                <thead>
+                  <tr className="bg-[var(--muted)]/70 border-b border-[var(--border)] text-xs font-bold uppercase tracking-wide opacity-60">
+                    <th className="text-left px-4 py-3">Player</th>
+                    <th className="text-center px-3 py-3">M</th>
+                    <th className="text-center px-3 py-3">Inn</th>
+                    <th className="text-center px-3 py-3">Runs</th>
+                    <th className="text-center px-3 py-3">Wkts</th>
+                    <th className="text-center px-3 py-3">MOTM</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {filtered.map((p) => (
+                    <Link key={p._id} href={`/players/search?id=${p._id}`} legacyBehavior>
+                      <tr className="hover:bg-[var(--muted)]/40 transition-colors cursor-pointer">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold leading-tight">{p.name}{p.nickname ? ` (${p.nickname})` : ''}</p>
+                          <p className="text-xs opacity-50 capitalize">{p.role}</p>
+                        </td>
+                        <td className="text-center px-3 py-3">{p.matches}</td>
+                        <td className="text-center px-3 py-3">{p.innings}</td>
+                        <td className="text-center px-3 py-3 font-bold text-[var(--primary)]">{p.runs}</td>
+                        <td className="text-center px-3 py-3 font-bold text-[var(--secondary)]">{p.wickets}</td>
+                        <td className="text-center px-3 py-3 font-bold text-yellow-500">{p.motmCount > 0 ? p.motmCount : '—'}</td>
+                      </tr>
+                    </Link>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {filtered.map((p, i) => (
-              <Link key={p._id} href={`/players/search?id=${p._id}`}>
-                <div className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-4 py-3 items-center hover:bg-[var(--muted)] transition-colors cursor-pointer ${i !== 0 ? 'border-t border-[var(--border)]' : ''}`}>
-                  <div>
-                    <p className="font-semibold">{p.name}{p.nickname ? ` (${p.nickname})` : ''}</p>
-                    <p className="text-xs opacity-50 capitalize">{p.role}</p>
-                  </div>
-                  <span className="w-12 text-center text-sm">{p.matches}</span>
-                  <span className="w-12 text-center text-sm">{p.innings}</span>
-                  <span className="w-12 text-center text-sm font-bold text-[var(--primary)]">{p.runs}</span>
-                  <span className="w-12 text-center text-sm font-bold text-[var(--secondary)]">{p.wickets}</span>
-                  <span className="w-12 text-center text-sm font-bold text-yellow-500">{p.motmCount > 0 ? p.motmCount : '-'}</span>
-                </div>
-              </Link>
-            ))}
           </div>
         )}
       </main>

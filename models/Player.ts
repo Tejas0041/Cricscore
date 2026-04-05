@@ -21,6 +21,15 @@ export interface IPlayer extends Document {
       strikeRate: number;
     };
   };
+  rankings: {
+    batting: number;
+    bowling: number;
+    allRounder: number;
+    lastUpdated: Date;
+    previousBatting?: number;
+    previousBowling?: number;
+    previousAllRounder?: number;
+  };
   motmCount: number;
   createdAt: Date;
 }
@@ -49,6 +58,15 @@ const PlayerSchema: Schema = new Schema({
       average: { type: Number, default: 0 },
       strikeRate: { type: Number, default: 0 },
     },
+  },
+  rankings: {
+    batting: { type: Number, default: 100 },
+    bowling: { type: Number, default: 100 },
+    allRounder: { type: Number, default: 10 },
+    lastUpdated: { type: Date, default: Date.now },
+    previousBatting: { type: Number, default: 100 },
+    previousBowling: { type: Number, default: 100 },
+    previousAllRounder: { type: Number, default: 10 },
   },
   motmCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },

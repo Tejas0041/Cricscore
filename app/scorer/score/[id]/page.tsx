@@ -48,8 +48,35 @@ export default function ScorePage() {
   const [soTempBowler, setSoTempBowler] = useState('');
   const [soEditingPlayers, setSoEditingPlayers] = useState(false);
   const [settings, setSettings] = useState<any>(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [endMatchModal, setEndMatchModal] = useState(false);
+  const [selectedWinner, setSelectedWinner] = useState('');
+  const [endingMatch, setEndingMatch] = useState(false);
   const matchRef = useRef<any>(null);
   const isScoringRef = useRef(false);
+
+  const handleEndMatchManual = async () => {
+    if (!selectedWinner) return;
+    setEndingMatch(true);
+    try {
+      const res = await fetch(`/api/matches/${params.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          status: 'completed', 
+          winner: selectedWinner,
+          matchEndReason: 'manual' 
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to end match');
+      await fetchMatch();
+      setEndMatchModal(false);
+    } catch (e) {
+      setAlertDialog({ isOpen: true, title: 'Error', message: 'Failed to end match' });
+    } finally {
+      setEndingMatch(false);
+    }
+  };
 
   // Keep ref in sync for double-click prevention
   useEffect(() => { matchRef.current = match; }, [match]);
@@ -599,8 +626,8 @@ export default function ScorePage() {
   }
 
   const innings = match.innings[match.currentInnings];
-  const battingTeam = match.currentInnings === 'first' ? match.teamA : match.teamB;
-  const bowlingTeam = match.currentInnings === 'first' ? match.teamB : match.teamA;
+  const battingTeam = match.innings[match.currentInnings].battingTeam === match.teamB.name ? match.teamB : match.teamA;
+  const bowlingTeam = battingTeam._id?.toString() === match.teamA._id?.toString() ? match.teamB : match.teamA;
 
   const currentOverBalls = match.timeline.filter(
     (e: any) => e.innings === match.currentInnings && e.over === innings.overs
@@ -714,6 +741,9 @@ export default function ScorePage() {
     if (match.status !== 'completed' || !match.winner) return null;
     if (match.winner === 'Tie') return 'Match Tied!';
 
+    // Manual end logic
+    if (match.matchEndReason === 'manual') return `${match.winner} won`;
+
     // Super over win
     if (match.superOver?.completed) {
       const soWinner = match.superOver.winner;
@@ -721,10 +751,10 @@ export default function ScorePage() {
       return 'Match tied · Super Over tied!';
     }
 
-    const teamBName = match.teamB.name;
+    const secondBattingTeam = match.innings.second.battingTeam === match.teamB.name ? match.teamB : match.teamA;
     // Team batting second won — by wickets remaining
-    if (match.winner === teamBName) {
-      const wicketsLeft = match.teamB.players.length - match.innings.second.wickets;
+    if (match.winner === secondBattingTeam.name) {
+      const wicketsLeft = secondBattingTeam.players.length - match.innings.second.wickets;
       return `${match.winner} won by ${wicketsLeft} wicket${wicketsLeft !== 1 ? 's' : ''}`;
     }
     // Team batting first won — by runs
@@ -735,9 +765,7 @@ export default function ScorePage() {
   // 1st innings stats (for display during 2nd innings)
   const firstInningsTeamA = match.teamA;
   const firstInningsTeamB = match.teamB;
-  const firstBattingTeam = match.innings.first.battingTeam
-    ? (match.innings.first.battingTeam.toString() === match.teamA._id?.toString() ? match.teamA : match.teamB)
-    : match.teamA;
+  const firstBattingTeam = match.innings.first.battingTeam === match.teamB.name ? match.teamB : match.teamA;
   const firstBowlingTeam = firstBattingTeam._id?.toString() === match.teamA._id?.toString() ? match.teamB : match.teamA;
 
   const firstBatsmanStats = match.timeline
@@ -785,7 +813,7 @@ export default function ScorePage() {
       {/* Super Over Setup Modal */}
       {superOverModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-sm">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-sm shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <h2 className="font-bold text-lg">⚡ Super Over</h2>
               <button onClick={() => setSuperOverModal(false)} className="p-1.5 rounded-lg hover:bg-[var(--muted)] transition-all">
@@ -821,7 +849,7 @@ export default function ScorePage() {
       {/* New Match Modal */}
       {newMatchModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-sm">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-sm shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <h2 className="font-bold text-lg">New Match — Same Teams</h2>
               <button onClick={() => setNewMatchModal(false)} className="p-1.5 rounded-lg hover:bg-[var(--muted)] transition-all">
@@ -905,7 +933,7 @@ export default function ScorePage() {
       {/* Overs Edit Modal */}
       {editingOvers && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-sm">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-sm shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <h2 className="font-bold text-lg">Change Overs</h2>
               <button onClick={() => setEditingOvers(false)}
@@ -946,7 +974,7 @@ export default function ScorePage() {
       {/* Squad Modal */}
       {squadModal.open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <h2 className="font-bold text-lg">Squads</h2>
               <div className="flex items-center gap-2">
@@ -1065,10 +1093,56 @@ export default function ScorePage() {
         </div>
       )}
 
+      {/* Manual End Match Modal */}
+      {endMatchModal && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-sm shadow-2xl p-6 animate-scale-in">
+            <h2 className="text-xl font-bold mb-2">Manual Match Conclusion</h2>
+            <p className="text-sm opacity-60 mb-6 font-medium">Select the winning team for this match. This will instantly conclude the match without calculating run/wicket margins.</p>
+            <div className="grid grid-cols-1 gap-3">
+              {(['A', 'B'] as const).map(t => {
+                const teamName = t === 'A' ? match.teamA.name : match.teamB.name;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setSelectedWinner(teamName)}
+                    className={`w-full py-4 rounded-xl font-bold text-lg border-2 transition-all ${selectedWinner === teamName ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]' : 'border-[var(--border)] hover:bg-[var(--muted)] opacity-80'}`}
+                  >
+                    {teamName}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setSelectedWinner('Tie')}
+                className={`w-full py-4 rounded-xl font-bold text-lg border-2 transition-all ${selectedWinner === 'Tie' ? 'border-[var(--secondary)] bg-[var(--secondary)]/10 text-[var(--secondary)]' : 'border-[var(--border)] hover:bg-[var(--muted)] opacity-80'}`}
+              >
+                Tie
+              </button>
+            </div>
+            <div className="flex gap-3 mt-8">
+              <button
+                onClick={handleEndMatchManual}
+                disabled={endingMatch || !selectedWinner}
+                className="flex-1 py-4 bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white rounded-xl font-bold shadow-xl shadow-primary/20 disabled:opacity-50 active:scale-95 transition-all"
+              >
+                {endingMatch ? 'Ending...' : 'End Match'}
+              </button>
+              <button
+                onClick={() => { setEndMatchModal(false); setSelectedWinner(''); }}
+                disabled={endingMatch}
+                className="px-6 py-4 bg-[var(--muted)] rounded-xl font-bold hover:bg-[var(--border)] transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white sticky top-0 z-10 shadow-lg">
         <div className="container mx-auto px-4 py-3 flex items-start justify-between gap-x-3">
           <div className="flex items-start gap-3 min-w-0">
-            <BackButton href="/scorer/all-matches" />
+            <BackButton href="/scorer/all-matches" iconOnly />
             <div className="min-w-0">
               <h1 className="text-base md:text-xl font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
               <p className="text-sm opacity-90">Scoring Panel</p>
@@ -1082,6 +1156,31 @@ export default function ScorePage() {
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowOptions(!showOptions)}
+              className="p-2.5 rounded-2xl hover:bg-white/20 transition-all active:scale-95"
+              aria-label="Match Options"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+              </svg>
+            </button>
+            {showOptions && (
+              <div className="absolute right-0 mt-2 w-48 bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl py-1 z-20 animate-scale-in">
+                <button
+                  onClick={() => { setEndMatchModal(true); setShowOptions(false); }}
+                  className="w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-[var(--muted)] text-red-500 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  End Match Early
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1102,36 +1201,30 @@ export default function ScorePage() {
               <p className="text-xl md:text-2xl font-bold">{rr}</p>
             </div>
           </div>
-          {/* 2nd innings chase info OR win message */}
-          {isSecondInnings && (
-            match.status === 'completed' && winMessage ? (
-              <div className="mt-3 pt-3 border-t border-[var(--border)] text-center">
-                <p className="text-lg font-bold text-[var(--primary)]">🏆 {winMessage}</p>
+          {/* Win message or Innings Info */}
+          {match.status === 'completed' && winMessage ? (
+            <div className="mt-3 pt-4 border-t border-[var(--border)] text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-lg font-black tracking-tight">
+                <span>🏆</span>
+                <span>{winMessage.toUpperCase()}</span>
               </div>
-            ) : (
-              <div className="mt-3 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <p className="text-xs opacity-60">Target</p>
-                  <p className="text-xl font-bold text-[var(--primary)]">{target}</p>
-                </div>
-                <div>
-                  <p className="text-xs opacity-60">Need</p>
-                  <p className="text-sm font-bold leading-tight">{runsNeeded > 0 ? `${runsNeeded} runs off ${ballsLeft} balls` : 'Won'}</p>
-                </div>
-                <div>
-                  <p className="text-xs opacity-60">Req. RR</p>
-                  <p className="text-xl font-bold">{runsNeeded > 0 ? reqRR : '-'}</p>
-                </div>
-              </div>
-            )
-          )}
-
-          {/* Win message for 1st innings completion */}
-          {!isSecondInnings && match.status === 'completed' && winMessage && (
-            <div className="mt-3 pt-3 border-t border-[var(--border)] text-center">
-              <p className="text-lg font-bold text-[var(--primary)]">🏆 {winMessage}</p>
             </div>
-          )}
+          ) : isSecondInnings ? (
+            <div className="mt-3 pt-3 border-t border-[var(--border)] grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="text-xs opacity-60">Target</p>
+                <p className="text-xl font-bold text-[var(--primary)]">{target}</p>
+              </div>
+              <div>
+                <p className="text-xs opacity-60">Need</p>
+                <p className="text-sm font-bold leading-tight">{runsNeeded > 0 ? `${runsNeeded} runs off ${ballsLeft} balls` : 'Won'}</p>
+              </div>
+              <div>
+                <p className="text-xs opacity-60">Req. RR</p>
+                <p className="text-xl font-bold">{runsNeeded > 0 ? reqRR : '-'}</p>
+              </div>
+            </div>
+          ) : null}
 
           {/* Ball circles for current over */}
           <div className="flex gap-2 flex-wrap mt-3">
@@ -1683,23 +1776,51 @@ export default function ScorePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {firstBattingTeam.players
-                      .filter((p: any) => p?._id && firstBatsmanStats[p._id.toString()])
-                      .map((player: any) => {
-                        const pid = player._id.toString();
-                        const stats = firstBatsmanStats[pid];
-                        const isCaptain = firstBattingTeam.captain && (firstBattingTeam.captain._id?.toString() === pid || firstBattingTeam.captain.toString() === pid);
-                        return (
-                          <tr key={pid} className="border-b border-[var(--border)]">
-                            <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}{stats.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
-                            <td className="text-center">{stats.runs}</td>
-                            <td className="text-center">{stats.balls}</td>
-                            <td className="text-center">{stats.singles}</td>
-                            <td className="text-center">{stats.fours}</td>
-                            <td className="text-center">{stats.balls > 0 ? ((stats.runs / stats.balls) * 100).toFixed(1) : '-'}</td>
-                          </tr>
-                        );
-                      })}
+                    {(() => {
+                      // Recompute stats directly here to ensure we have the data
+                      const localBatsmanStats: any = {};
+                      match.timeline
+                        .filter((e: any) => e.innings === 'first' && e.batsman)
+                        .forEach((e: any) => {
+                          const pid = e.batsman?._id ? e.batsman._id.toString() : e.batsman?.toString();
+                          if (!pid) return;
+                          if (!localBatsmanStats[pid]) {
+                            localBatsmanStats[pid] = { runs: 0, balls: 0, fours: 0, singles: 0, out: false, dismissedBy: null };
+                          }
+                          if (e.eventType === 'run') {
+                            localBatsmanStats[pid].runs += e.runs;
+                            localBatsmanStats[pid].balls++;
+                            if (e.runs === 4) localBatsmanStats[pid].fours++;
+                            else if (e.runs === 1) localBatsmanStats[pid].singles++;
+                          } else if (e.eventType === 'dot') {
+                            localBatsmanStats[pid].balls++;
+                          } else if (e.eventType === 'wicket') {
+                            localBatsmanStats[pid].balls++;
+                            localBatsmanStats[pid].out = true;
+                            const wid = e.bowler?._id ? e.bowler._id.toString() : e.bowler?.toString();
+                            localBatsmanStats[pid].dismissedBy = wid || null;
+                          }
+                        });
+                      
+                      // Show players who actually batted in 1st innings
+                      return firstBattingTeam.players
+                        .filter((p: any) => p?._id && localBatsmanStats[p._id.toString()])
+                        .map((player: any) => {
+                          const pid = player._id.toString();
+                          const stats = localBatsmanStats[pid];
+                          const isCaptain = firstBattingTeam.captain && (firstBattingTeam.captain._id?.toString() === pid || firstBattingTeam.captain.toString() === pid);
+                          return (
+                            <tr key={pid} className="border-b border-[var(--border)]">
+                              <td className="py-2">{player.name}{player.nickname ? ` (${player.nickname})` : ''}{isCaptain ? ' (c)' : ''}{stats.out && <span className="text-red-500 ml-1 text-xs">out</span>}</td>
+                              <td className="text-center">{stats.runs}</td>
+                              <td className="text-center">{stats.balls}</td>
+                              <td className="text-center">{stats.singles}</td>
+                              <td className="text-center">{stats.fours}</td>
+                              <td className="text-center">{stats.balls > 0 ? ((stats.runs / stats.balls) * 100).toFixed(1) : '-'}</td>
+                            </tr>
+                          );
+                        });
+                    })()}
                   </tbody>
                 </table>
               </div>

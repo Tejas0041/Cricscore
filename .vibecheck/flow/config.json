@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "projectName": "cricscore",
+  "userName": "developer",
+  "skillLevel": "intermediate",
+  "outputFolder": ".vibecheck/flow",
+  "planningArtifacts": ".vibecheck/flow/planning-artifacts",
+  "implementationArtifacts": ".vibecheck/flow/implementation-artifacts",
+  "installedAt": "2026-04-05T06:09:40.594Z",
+  "ide": [
+    "vscode"
+  ]
+}

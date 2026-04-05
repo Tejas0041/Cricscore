@@ -17,10 +17,15 @@ export async function GET(
     const pid = player._id.toString();
 
     // All matches where this player participated
-    const matches = await Match.find({
+    const allMatches = await Match.find({
       status: { $in: ['completed', 'live'] },
       $or: [{ 'teamA.players': player._id }, { 'teamB.players': player._id }],
     }).populate('teamA.players teamB.players');
+
+    // Deduplicate matches (player could appear in both teams as common player)
+    const matchMap = new Map<string, typeof allMatches[0]>();
+    for (const m of allMatches) matchMap.set(m._id.toString(), m);
+    const matches = Array.from(matchMap.values());
 
     // ── Batting aggregates ──────────────────────────────────────────────
     let totalRuns = 0, totalBalls = 0, totalFours = 0, totalSixes = 0;
@@ -146,7 +151,7 @@ export async function GET(
       .map(x => ({ name: x.name, sr: (x.runs / x.balls) * 100, runs: x.runs, balls: x.balls }))
       .sort((a, b) => b.sr - a.sr)[0] ?? null;
 
-    // MOTM count
+    // ── MOTM count ─────────────────────────────────────────────────────
     const motmMatches = await Match.find({ status: 'completed', 'motm.playerId': player._id }).select('motm createdAt teamA teamB');
     const motmCount = motmMatches.length;
     const motmHistory = motmMatches.map((m: any) => ({
@@ -157,8 +162,33 @@ export async function GET(
       provider: m.motm.provider,
     }));
 
+    // ── Captaincy aggregates ────────────────────────────────────────────
+    const captainMatches = await Match.find({
+      status: 'completed',
+      $or: [
+        { 'teamA.captain': player._id },
+        { 'teamB.captain': player._id }
+      ]
+    });
+
+    let capMatchesLed = captainMatches.length;
+    let capWins = 0;
+    let capLosses = 0;
+    let capTies = 0;
+
+    for (const m of captainMatches) {
+      if (!m.winner || m.winner === 'Tie') {
+        capTies++;
+        continue;
+      }
+      const isTeamA = m.teamA.captain?.toString() === pid;
+      const playerTeam = isTeamA ? m.teamA.name : m.teamB.name;
+      if (m.winner === playerTeam) capWins++;
+      else capLosses++;
+    }
+
     return NextResponse.json({
-      player: { _id: pid, name: player.name, nickname: player.nickname, role: player.role },
+      player: { _id: pid, name: player.name, nickname: player.nickname, role: player.role, rankings: player.rankings },
       batting: {
         matches: matches.length,
         innings,
@@ -185,6 +215,13 @@ export async function GET(
       bestMatchWickets,
       matchups: { mostOutsVs, mostRunsVs, bestSRVs },
       motm: { count: motmCount, history: motmHistory },
+      captaincy: capMatchesLed > 0 ? {
+        matches: capMatchesLed,
+        wins: capWins,
+        losses: capLosses,
+        ties: capTies,
+        winPercentage: (capWins / capMatchesLed) * 100
+      } : null,
     });
   } catch (error) {
     console.error(error);

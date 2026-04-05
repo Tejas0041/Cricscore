@@ -697,7 +697,7 @@ export default function CreateMatchPage() {
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-xl p-6">
             <h2 className="text-xl font-bold mb-1">Common Players</h2>
             <p className="text-sm opacity-60 mb-6">
-              Select players who will play for both teams (optional — gully cricket substitute).
+              Select players who will play for both teams (optional — substitute).
               They'll appear in both squads with a "Common" badge.
             </p>
 

@@ -127,8 +127,11 @@ export default function MatchPage() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin"></div>
+    <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
+      <div className="glass-card rounded-3xl p-8 flex flex-col items-center gap-4">
+        <div className="loading-spinner" />
+        <p className="text-sm font-semibold opacity-80">Loading match...</p>
+      </div>
     </div>
   );
   if (!match) return <div className="min-h-screen flex items-center justify-center"><p>Match not found</p></div>;
@@ -137,10 +140,12 @@ export default function MatchPage() {
   const firstInnings = match.innings.first;
   const secondInnings = match.innings.second;
   const currentInn = match.innings[match.currentInnings];
-  const firstBattingTeam = match.teamA;
-  const firstBowlingTeam = match.teamB;
-  const secondBattingTeam = match.teamB;
-  const secondBowlingTeam = match.teamA;
+
+  // Use stored battingTeam name to correctly assign teams regardless of toss
+  const firstBattingTeam = firstInnings.battingTeam === match.teamB.name ? match.teamB : match.teamA;
+  const firstBowlingTeam = firstInnings.battingTeam === match.teamB.name ? match.teamA : match.teamB;
+  const secondBattingTeam = firstBowlingTeam;
+  const secondBowlingTeam = firstBattingTeam;
   const currentBattingTeam = isSecond ? secondBattingTeam : firstBattingTeam;
   const currentBowlingTeam = isSecond ? secondBowlingTeam : firstBowlingTeam;
 
@@ -191,8 +196,8 @@ export default function MatchPage() {
       return 'Match tied · Super Over tied!';
     }
 
-    if (match.winner === match.teamB.name) {
-      const w = match.teamB.players.length - secondInnings.wickets;
+    if (match.winner === secondBattingTeam.name) {
+      const w = secondBattingTeam.players.length - secondInnings.wickets;
       return `${match.winner} won by ${w} wicket${w !== 1 ? 's' : ''}`;
     }
     const r = firstInnings.runs - secondInnings.runs;
@@ -314,7 +319,7 @@ export default function MatchPage() {
       {/* Squad Modal */}
       {squadModal.open && currentTeam && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <h2 className="font-bold text-lg">Squads</h2>
               <div className="flex items-center gap-2">
@@ -411,22 +416,22 @@ export default function MatchPage() {
       )}
 
       {/* Header */}
-      <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white sticky top-0 z-10 shadow-lg">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-2">
+      <div className="bg-[var(--card)] border-b border-[var(--border)] text-[var(--foreground)] sticky top-0 z-10 shadow-lg backdrop-blur-xl">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <BackButton href="/matches" />
             <div className="min-w-0">
-              <h1 className="text-base md:text-xl font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
-              <p className="text-xs opacity-90">{match.overs} overs</p>
+              <h1 className="text-sm md:text-lg font-bold truncate">{match.teamA.name} vs {match.teamB.name}</h1>
+              <p className="text-xs opacity-80">{match.overs} overs</p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button onClick={() => openSquad('A')} className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg font-semibold transition-all">See Squads</button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => openSquad('A')} className="text-xs bg-[var(--muted)] hover:bg-[var(--border)] px-3 py-1.5 rounded-xl font-semibold transition-all border border-[var(--border)]">See Squads</button>
             {match.status === 'live' && (
-              <span className="flex items-center gap-1 text-xs font-bold">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2.5 py-1.5 rounded-xl border border-[var(--primary)]/30">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--primary)] opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--primary)]"></span>
                 </span>
                 LIVE
               </span>
@@ -436,7 +441,7 @@ export default function MatchPage() {
       </div>
 
       <main className="container mx-auto p-4 max-w-4xl space-y-4">
-        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-lg p-4 md:p-6">
+        <div className="glass-card rounded-2xl shadow-lg p-4 md:p-6">
         {/* MOTM Card — above result */}
         {match.status === 'completed' && (
           <div className="mb-4">
@@ -465,9 +470,9 @@ export default function MatchPage() {
               const bowlOv = `${Math.floor(bowlBalls / 6)}.${bowlBalls % 6}`;
               const bowlEcon = bowlBalls > 0 ? (bowlRuns / (bowlBalls / 6)).toFixed(1) : '-';
               return (
-                <div className="p-4 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/40 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wide text-yellow-600">Man of the Match</span>
+                <div className="p-4 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 rounded-2xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-widest text-amber-500">Man of the Match</span>
                     <div className="flex items-center gap-2">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--muted)] opacity-70 capitalize">{motm.provider}</span>
                       {isScorer && (
@@ -478,25 +483,25 @@ export default function MatchPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                    <p className="text-lg font-bold">🏅 {motm.playerName}</p>
-                    <p className="text-sm opacity-50">{motm.team}</p>
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                    <p className="text-xl font-bold">🏅 {motm.playerName}</p>
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-500 font-semibold">{motm.team}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs flex-wrap mb-2">
+                  <div className="flex items-center gap-2 text-xs flex-wrap mb-3">
                     {batBalls > 0 && (
-                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 text-green-600 font-semibold">
+                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/15 text-green-500 font-semibold">
                         <span className="opacity-60 font-normal">Bat</span>
-                        {batRuns}{batOut ? '' : '*'}({batBalls}) SR {batSR}{batFours > 0 ? ` · ${batFours}(4s)` : ''}
+                        {batRuns}{batOut ? '' : '*'}({batBalls}) SR {batSR}{batFours > 0 ? ` · ${batFours}×4` : ''}
                       </span>
                     )}
                     {bowlBalls > 0 && (
-                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/15 text-orange-600 font-semibold">
+                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/15 text-orange-500 font-semibold">
                         <span className="opacity-60 font-normal">Bowl</span>
                         {bowlWickets}/{bowlRuns} ({bowlOv}ov) Econ {bowlEcon}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm opacity-80 leading-relaxed">{motm.reason}</p>
+                  <p className="text-sm opacity-75 leading-relaxed">{motm.reason}</p>
                 </div>
               );
             })() : motmLoading ? (
@@ -516,28 +521,30 @@ export default function MatchPage() {
         )}
 
           {match.status === 'completed' && winMessage && (
-            <div className="mb-4 p-3 bg-[var(--primary)]/10 border border-[var(--primary)] rounded-lg text-center">
-              <p className="font-bold text-[var(--primary)]">🏆 {winMessage}</p>
+            <div className="mb-4 p-4 bg-gradient-to-r from-[var(--primary)]/15 to-[var(--secondary)]/15 border border-[var(--primary)]/40 rounded-2xl text-center">
+              <p className="font-bold text-[var(--primary)] text-base">🏆 {winMessage}</p>
               {isScorer && (
                 <button onClick={handleUndo} disabled={isUndoing || !match.timeline?.length}
-                  className="mt-2 px-4 py-1.5 bg-purple-500 text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-all disabled:opacity-50">
+                  className="mt-2 px-4 py-1.5 bg-purple-500 text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-all disabled:opacity-50">
                   {isUndoing ? 'Undoing...' : 'Undo Last Ball'}
                 </button>
               )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[var(--muted)] rounded-lg p-3">
-              <p className="text-sm font-semibold opacity-70 mb-1">{firstBattingTeam.name}</p>
-              <p className="text-2xl font-bold text-[var(--primary)]">{firstInnings.runs}/{firstInnings.wickets}</p>
-              <p className="text-xs opacity-60">({firstInnings.overs}.{firstInnings.balls} ov)</p>
+            <div className="rounded-2xl p-4 bg-gradient-to-br from-[var(--primary)]/10 to-[var(--primary)]/5 border border-[var(--primary)]/20">
+              <p className="text-xs font-semibold opacity-60 mb-1 truncate">{firstBattingTeam.name}</p>
+              <p className="text-3xl font-extrabold text-[var(--primary)]">{firstInnings.runs}/{firstInnings.wickets}</p>
+              <p className="text-xs opacity-50 mt-0.5">({firstInnings.overs}.{firstInnings.balls} ov)</p>
             </div>
-            <div className="bg-[var(--muted)] rounded-lg p-3">
-              <p className="text-sm font-semibold opacity-70 mb-1">{secondBattingTeam.name}</p>
+            <div className="rounded-2xl p-4 bg-gradient-to-br from-[var(--secondary)]/10 to-[var(--secondary)]/5 border border-[var(--secondary)]/20">
+              <p className="text-xs font-semibold opacity-60 mb-1 truncate">{secondBattingTeam.name}</p>
               {isSecond || match.status === 'completed' ? (
-                <><p className="text-2xl font-bold text-[var(--primary)]">{secondInnings.runs}/{secondInnings.wickets}</p>
-                <p className="text-xs opacity-60">({secondInnings.overs}.{secondInnings.balls} ov)</p></>
-              ) : <p className="text-2xl font-bold opacity-40">Yet to bat</p>}
+                <>
+                  <p className="text-3xl font-extrabold text-[var(--secondary)]">{secondInnings.runs}/{secondInnings.wickets}</p>
+                  <p className="text-xs opacity-50 mt-0.5">({secondInnings.overs}.{secondInnings.balls} ov)</p>
+                </>
+              ) : <p className="text-lg font-bold opacity-30 mt-2">Yet to bat</p>}
             </div>
           </div>
 
