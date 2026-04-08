@@ -266,8 +266,8 @@ RATING SCALE (0-1000):
 
 RANKING LOGIC — consider ALL of these:
 1. WICKETS are most important but NOT the only factor. A bowler with 70 wickets at economy 8.5 should NOT beat one with 55 wickets at economy 5.2 and 8 three-wicket hauls.
-2. ECONOMY: Below ${poolAvgEcon} is good. Below ${(parseFloat(poolAvgEcon) * 0.8).toFixed(2)} is excellent. Above ${(parseFloat(poolAvgEcon) * 1.2).toFixed(2)} is poor.
-3. BOWLING AVERAGE: Lower is better. Below ${(parseFloat(poolAvgBowlAvg) * 0.7).toFixed(1)} is elite.
+2. ECONOMY: Below ${poolAvgEcon} is good. Below ${(poolAvgEcon * 0.8).toFixed(2)} is excellent. Above ${(poolAvgEcon * 1.2).toFixed(2)} is poor.
+3. BOWLING AVERAGE: Lower is better. Below ${(poolAvgBowlAvg * 0.7).toFixed(1)} is elite.
 4. 3-WICKET and 4-WICKET HAULS: Match-winning spells. Weight heavily.
 5. CRUCIAL WICKETS: 3+ wickets in winning matches. Shows match-winning ability.
 6. DOT BALL %: Higher = more pressure. Above 40% is excellent.
