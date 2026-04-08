@@ -626,8 +626,9 @@ export default function ScorePage() {
   }
 
   const innings = match.innings[match.currentInnings];
-  const battingTeam = match.innings[match.currentInnings].battingTeam === match.teamB.name ? match.teamB : match.teamA;
-  const bowlingTeam = battingTeam._id?.toString() === match.teamA._id?.toString() ? match.teamB : match.teamA;
+  const battingTeamName = match.innings[match.currentInnings].battingTeam;
+  const battingTeam = match.teamA.name === battingTeamName ? match.teamA : match.teamB;
+  const bowlingTeam = match.teamA.name === battingTeamName ? match.teamB : match.teamA;
 
   const currentOverBalls = match.timeline.filter(
     (e: any) => e.innings === match.currentInnings && e.over === innings.overs
@@ -765,8 +766,8 @@ export default function ScorePage() {
   // 1st innings stats (for display during 2nd innings)
   const firstInningsTeamA = match.teamA;
   const firstInningsTeamB = match.teamB;
-  const firstBattingTeam = match.innings.first.battingTeam === match.teamB.name ? match.teamB : match.teamA;
-  const firstBowlingTeam = firstBattingTeam._id?.toString() === match.teamA._id?.toString() ? match.teamB : match.teamA;
+  const firstBattingTeam = match.innings.first.battingTeam === match.teamA.name ? match.teamA : match.teamB;
+  const firstBowlingTeam = match.innings.first.battingTeam === match.teamA.name ? match.teamB : match.teamA;
 
   const firstBatsmanStats = match.timeline
     .filter((e: any) => e.innings === 'first' && e.batsman)
