@@ -30,13 +30,23 @@ export async function POST(request: NextRequest) {
     
     const data = await request.json();
     
+    // Ensure innings have team names set
+    let innings = data.innings;
+    if (innings && innings.first && innings.second) {
+      // If second innings doesn't have team names, set them (swap from first)
+      if (!innings.second.battingTeam || !innings.second.bowlingTeam) {
+        innings.second.battingTeam = innings.first.bowlingTeam;
+        innings.second.bowlingTeam = innings.first.battingTeam;
+      }
+    }
+    
     const created = await Match.create({
       teamA: data.teamA,
       teamB: data.teamB,
       overs: data.overs,
       tossWinner: data.tossWinner,
       tossDecision: data.tossDecision,
-      innings: data.innings || undefined,
+      innings: innings || undefined,
       scoringRules: data.scoringRules || { single: 1, boundary: 4 },
       bowlerOversLimit: data.bowlerOversLimit || 2,
       commonPlayers: data.commonPlayers || [],

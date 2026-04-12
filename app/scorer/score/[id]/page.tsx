@@ -52,8 +52,76 @@ export default function ScorePage() {
   const [endMatchModal, setEndMatchModal] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState('');
   const [endingMatch, setEndingMatch] = useState(false);
+  const [switchTeamsModal, setSwitchTeamsModal] = useState(false);
+  const [switchingTeams, setSwitchingTeams] = useState(false);
   const matchRef = useRef<any>(null);
   const isScoringRef = useRef(false);
+
+  const handleSwitchTeams = async () => {
+    if (!match) return;
+    setSwitchingTeams(true);
+    try {
+      const currentInnings = match.innings[match.currentInnings];
+      
+      // Get current team names with fallback logic
+      let currentBattingTeam = currentInnings.battingTeam;
+      let currentBowlingTeam = currentInnings.bowlingTeam;
+      
+      // If team names are missing, derive them from match data
+      if (!currentBattingTeam || !currentBowlingTeam) {
+        if (match.currentInnings === 'first') {
+          // For first innings, use toss decision to determine teams
+          if (match.tossWinner && match.tossDecision) {
+            currentBattingTeam = match.tossDecision === 'bat' ? match.tossWinner : 
+                                (match.tossWinner === match.teamA.name ? match.teamB.name : match.teamA.name);
+            currentBowlingTeam = currentBattingTeam === match.teamA.name ? match.teamB.name : match.teamA.name;
+          } else {
+            // Default: teamA bats first
+            currentBattingTeam = match.teamA.name;
+            currentBowlingTeam = match.teamB.name;
+          }
+        } else {
+          // For second innings, swap from first innings
+          const firstBatting = match.innings.first.battingTeam;
+          const firstBowling = match.innings.first.bowlingTeam;
+          if (firstBatting && firstBowling) {
+            currentBattingTeam = firstBowling;
+            currentBowlingTeam = firstBatting;
+          } else {
+            // Last resort: swap teamA/teamB
+            currentBattingTeam = match.teamB.name;
+            currentBowlingTeam = match.teamA.name;
+          }
+        }
+      }
+      
+      // Swap the teams
+      const newBattingTeam = currentBowlingTeam;
+      const newBowlingTeam = currentBattingTeam;
+      
+      const res = await fetch(`/api/matches/${params.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          [`innings.${match.currentInnings}.battingTeam`]: newBattingTeam,
+          [`innings.${match.currentInnings}.bowlingTeam`]: newBowlingTeam,
+        }),
+      });
+      
+      if (!res.ok) throw new Error('Failed to switch teams');
+      await fetchMatch();
+      setSwitchTeamsModal(false);
+      setCurrentBatsman('');
+      setCurrentBowler('');
+      setTempBatsman('');
+      setTempBowler('');
+    } catch (e) {
+      console.error('Switch teams error:', e);
+      setAlertDialog({ isOpen: true, title: 'Error', message: 'Failed to switch teams' });
+    } finally {
+      setSwitchingTeams(false);
+    }
+  };
 
   const handleEndMatchManual = async () => {
     if (!selectedWinner) return;
@@ -398,26 +466,41 @@ export default function ScorePage() {
         fetch(`/api/matches/${params.id}/motm`, { method: 'POST' }).catch(() => {});
       }
 
-      const batFirst = newMatchBattingFirst === 'A' ? match.teamA : match.teamB;
-      const batSecond = newMatchBattingFirst === 'A' ? match.teamB : match.teamA;
+      // FIXED: Keep teamA as teamA and teamB as teamB, just set innings correctly
+      const battingTeamName = newMatchBattingFirst === 'A' ? match.teamA.name : match.teamB.name;
+      const bowlingTeamName = newMatchBattingFirst === 'A' ? match.teamB.name : match.teamA.name;
+      
       const body = {
         teamA: {
-          id: batFirst.id || batFirst._id,
-          name: batFirst.name,
-          players: batFirst.players.map((p: any) => p._id || p),
-          captain: batFirst.captain?._id || batFirst.captain,
+          id: match.teamA.id || match.teamA._id,
+          name: match.teamA.name,
+          players: match.teamA.players.map((p: any) => p._id || p),
+          captain: match.teamA.captain?._id || match.teamA.captain,
         },
         teamB: {
-          id: batSecond.id || batSecond._id,
-          name: batSecond.name,
-          players: batSecond.players.map((p: any) => p._id || p),
-          captain: batSecond.captain?._id || batSecond.captain,
+          id: match.teamB.id || match.teamB._id,
+          name: match.teamB.name,
+          players: match.teamB.players.map((p: any) => p._id || p),
+          captain: match.teamB.captain?._id || match.teamB.captain,
         },
         overs: newMatchOvers ? parseInt(newMatchOvers) : match.overs,
         scoringRules: match.scoringRules,
         bowlerOversLimit: match.bowlerOversLimit,
         commonPlayers: (match.commonPlayers || []).map((p: any) => p._id || p),
+        innings: {
+          first: { battingTeam: battingTeamName, bowlingTeam: bowlingTeamName },
+          second: { battingTeam: bowlingTeamName, bowlingTeam: battingTeamName },
+        },
       };
+      
+      console.log('New Match Debug:', {
+        newMatchBattingFirst,
+        battingTeamName,
+        bowlingTeamName,
+        teamAName: match.teamA.name,
+        teamBName: match.teamB.name
+      });
+      
       const res = await fetch('/api/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1140,6 +1223,107 @@ export default function ScorePage() {
         </div>
       )}
 
+      {/* Switch Teams Modal */}
+      {switchTeamsModal && match && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-[var(--background)] border border-[var(--border)] rounded-2xl w-full max-w-sm shadow-2xl p-6 animate-scale-in">
+            <h2 className="text-xl font-bold mb-2">Switch Batting/Bowling Teams</h2>
+            <p className="text-sm opacity-60 mb-4 font-medium">This will swap which team is batting and which is bowling for the current innings.</p>
+            
+            {(() => {
+              const currentInnings = match.innings?.[match.currentInnings];
+              
+              if (!currentInnings) {
+                return (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4">
+                    <p className="text-red-500 text-sm font-semibold">Error: Cannot load innings data</p>
+                    <p className="text-xs opacity-60 mt-1">Current innings: {match.currentInnings}</p>
+                    <p className="text-xs opacity-60">Available: {Object.keys(match.innings || {}).join(', ')}</p>
+                  </div>
+                );
+              }
+              
+              // Fallback: Calculate team names from match data if missing in innings
+              let currentBattingTeam = currentInnings.battingTeam;
+              let currentBowlingTeam = currentInnings.bowlingTeam;
+              
+              // If team names are missing, derive them from first innings or match data
+              if (!currentBattingTeam || !currentBowlingTeam) {
+                if (match.currentInnings === 'first') {
+                  // For first innings, use toss decision to determine teams
+                  if (match.tossWinner && match.tossDecision) {
+                    currentBattingTeam = match.tossDecision === 'bat' ? match.tossWinner : 
+                                        (match.tossWinner === match.teamA.name ? match.teamB.name : match.teamA.name);
+                    currentBowlingTeam = currentBattingTeam === match.teamA.name ? match.teamB.name : match.teamA.name;
+                  } else {
+                    // Default: teamA bats first
+                    currentBattingTeam = match.teamA.name;
+                    currentBowlingTeam = match.teamB.name;
+                  }
+                } else {
+                  // For second innings, swap from first innings
+                  const firstBatting = match.innings.first.battingTeam;
+                  const firstBowling = match.innings.first.bowlingTeam;
+                  if (firstBatting && firstBowling) {
+                    currentBattingTeam = firstBowling;
+                    currentBowlingTeam = firstBatting;
+                  } else {
+                    // Last resort: swap teamA/teamB
+                    currentBattingTeam = match.teamB.name;
+                    currentBowlingTeam = match.teamA.name;
+                  }
+                }
+              }
+              
+              return (
+                <>
+                  <div className="bg-[var(--muted)] rounded-xl p-4 mb-6 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm opacity-60">Currently Batting:</span>
+                      <span className="font-bold text-[var(--primary)]">{currentBattingTeam || 'Unknown'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm opacity-60">Currently Bowling:</span>
+                      <span className="font-bold text-red-500">{currentBowlingTeam || 'Unknown'}</span>
+                    </div>
+                    <div className="h-px bg-[var(--border)] my-2" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm opacity-60">Will become Batting:</span>
+                      <span className="font-bold text-[var(--primary)]">{currentBowlingTeam || 'Unknown'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm opacity-60">Will become Bowling:</span>
+                      <span className="font-bold text-red-500">{currentBattingTeam || 'Unknown'}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 mb-6">
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 font-semibold">⚠️ Warning: This will clear current batsman and bowler selections. You'll need to select them again after switching.</p>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleSwitchTeams}
+                      disabled={switchingTeams || !currentBattingTeam || !currentBowlingTeam}
+                      className="flex-1 py-4 bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white rounded-xl font-bold shadow-xl shadow-primary/20 disabled:opacity-50 active:scale-95 transition-all"
+                    >
+                      {switchingTeams ? 'Switching...' : 'Switch Teams'}
+                    </button>
+                    <button
+                      onClick={() => setSwitchTeamsModal(false)}
+                      disabled={switchingTeams}
+                      className="px-6 py-4 bg-[var(--muted)] rounded-xl font-bold hover:bg-[var(--border)] transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white sticky top-0 z-10 shadow-lg">
         <div className="container mx-auto px-4 py-3 flex items-start justify-between gap-x-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -1170,7 +1354,16 @@ export default function ScorePage() {
               </svg>
             </button>
             {showOptions && (
-              <div className="absolute right-0 mt-2 w-48 bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl py-1 z-20 animate-scale-in">
+              <div className="absolute right-0 mt-2 w-56 bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl py-1 z-20 animate-scale-in">
+                <button
+                  onClick={() => { setSwitchTeamsModal(true); setShowOptions(false); }}
+                  className="w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-[var(--muted)] text-[var(--primary)] flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Switch Bat/Bowl Teams
+                </button>
                 <button
                   onClick={() => { setEndMatchModal(true); setShowOptions(false); }}
                   className="w-full px-4 py-2.5 text-left text-sm font-semibold hover:bg-[var(--muted)] text-red-500 flex items-center gap-2"

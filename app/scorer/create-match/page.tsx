@@ -195,8 +195,18 @@ export default function CreateMatchPage() {
         });
       }
       
+      // FIXED: Determine batting team correctly based on toss decision
       const battingTeam = tossDecision === 'bat' ? finalTossWinner : (finalTossWinner === teamAName ? teamBName : teamAName);
       const bowlingTeam = battingTeam === teamAName ? teamBName : teamAName;
+      
+      console.log('Match Creation Debug:', {
+        finalTossWinner,
+        tossDecision,
+        battingTeam,
+        bowlingTeam,
+        teamAName,
+        teamBName
+      });
       
       const matchRes = await fetch('/api/matches', {
         method: 'POST',
