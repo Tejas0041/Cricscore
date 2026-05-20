@@ -11,8 +11,8 @@ interface Match {
   winner?: string;
   motm?: { playerName: string; team: string };
   innings: {
-    first: { runs: number; wickets: number; overs: number; balls: number };
-    second: { runs: number; wickets: number; overs: number; balls: number };
+    first: { battingTeam: string; bowlingTeam: string; runs: number; wickets: number; overs: number; balls: number };
+    second: { battingTeam: string; bowlingTeam: string; runs: number; wickets: number; overs: number; balls: number };
   };
   currentInnings: string;
   createdAt: string;
